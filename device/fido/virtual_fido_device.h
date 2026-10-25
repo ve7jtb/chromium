@@ -428,7 +428,8 @@ class COMPONENT_EXPORT(DEVICE_FIDO) VirtualFidoDevice : public FidoDevice {
   std::string GetId() const override;
 
  protected:
-  static std::vector<uint8_t> GetAttestationKey();
+  static std::vector<uint8_t> GetAttestationKey(
+      CoseAlgorithmIdentifier algorithm = CoseAlgorithmIdentifier::kEs256);
 
   scoped_refptr<State> NewReferenceToState() const { return state_; }
 
@@ -437,7 +438,9 @@ class COMPONENT_EXPORT(DEVICE_FIDO) VirtualFidoDevice : public FidoDevice {
   // https://w3c.github.io/webauthn/#defined-attestation-formats
   std::optional<std::vector<uint8_t>> GenerateAttestationCertificate(
       bool individual_attestation_requested,
-      bool include_transports) const;
+      bool include_transports,
+      CoseAlgorithmIdentifier algorithm =
+          CoseAlgorithmIdentifier::kEs256) const;
 
   void StoreNewKey(base::span<const uint8_t> key_handle,
                    VirtualFidoDevice::RegistrationData registration_data);

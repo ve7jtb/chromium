@@ -180,11 +180,13 @@ std::vector<uint8_t> ConstructMakeCredentialResponse(
     std::optional<LargeBlobSupportType> large_blob_type,
     bool prf_enabled,
     std::optional<std::vector<uint8_t>> prf_results,
-    std::optional<CmtgKeyResponse> cmtg_key) {
+    std::optional<CmtgKeyResponse> cmtg_key,
+    CoseAlgorithmIdentifier attestation_algorithm =
+        CoseAlgorithmIdentifier::kEs256) {
   std::unique_ptr<OpaqueAttestationStatement> attestation_statement;
   if (!signature.empty()) {
     cbor::Value::MapValue attestation_map;
-    attestation_map.emplace("alg", -7);
+    attestation_map.emplace("alg", static_cast<int64_t>(attestation_algorithm));
     attestation_map.emplace("sig", base::ToVector(signature));
 
     if (attestation_certificate) {
@@ -1395,19 +1397,42 @@ std::optional<CtapDeviceResponseCode> VirtualCtap2Device::OnMakeCredential(
   std::vector<uint8_t> sign_buffer =
       ConstructSignatureBuffer(authenticator_data, request.client_data_hash);
 
+  CoseAlgorithmIdentifier attestation_alg =
+      config_.batch_attestation_algorithm.value_or(
+          (private_key->algorithm() == CoseAlgorithmIdentifier::kMlDsa44 ||
+           private_key->algorithm() == CoseAlgorithmIdentifier::kMlDsa65 ||
+           private_key->algorithm() == CoseAlgorithmIdentifier::kMlDsa87)
+              ? private_key->algorithm()
+              : CoseAlgorithmIdentifier::kEs256);
+
   // Sign with attestation key.
   // Note: Non-deterministic, you need to mock this out if you rely on
   // deterministic behavior.
   std::vector<uint8_t> sig;
   if (!config_.none_attestation) {
-    auto key =
-        crypto::keypair::PrivateKey::FromPrivateKeyInfo(GetAttestationKey());
-    CHECK(key && key->IsEc());
+    auto key = crypto::keypair::PrivateKey::FromPrivateKeyInfo(
+        GetAttestationKey(attestation_alg));
+    CHECK(key);
     if (mutable_state()->ctap2_invalid_signature) {
       sig = {0x00};
     } else {
-      sig = crypto::sign::Sign(crypto::sign::SignatureKind::ECDSA_SHA256, *key,
-                               sign_buffer);
+      crypto::sign::SignatureKind sig_kind;
+      switch (attestation_alg) {
+        case CoseAlgorithmIdentifier::kMlDsa44:
+          sig_kind = crypto::sign::SignatureKind::MLDSA_44;
+          break;
+        case CoseAlgorithmIdentifier::kMlDsa65:
+          sig_kind = crypto::sign::SignatureKind::MLDSA_65;
+          break;
+        case CoseAlgorithmIdentifier::kMlDsa87:
+          sig_kind = crypto::sign::SignatureKind::MLDSA_87;
+          break;
+        case CoseAlgorithmIdentifier::kEs256:
+        default:
+          sig_kind = crypto::sign::SignatureKind::ECDSA_SHA256;
+          break;
+      }
+      sig = crypto::sign::Sign(sig_kind, *key, sign_buffer);
     }
   }
 
@@ -1435,7 +1460,8 @@ std::optional<CtapDeviceResponseCode> VirtualCtap2Device::OnMakeCredential(
     }
     attestation_cert = GenerateAttestationCertificate(
         enterprise_attestation_requested,
-        config_.include_transports_in_attestation_certificate);
+        config_.include_transports_in_attestation_certificate,
+        attestation_alg);
     if (!attestation_cert) {
       DLOG(ERROR) << "Failed to generate attestation certificate.";
       return CtapDeviceResponseCode::kCtap2ErrOther;
@@ -1511,7 +1537,7 @@ std::optional<CtapDeviceResponseCode> VirtualCtap2Device::OnMakeCredential(
   *response = ConstructMakeCredentialResponse(
       std::move(attestation_cert), sig, std::move(authenticator_data),
       enterprise_attestation_requested, supports_large_blob, prf_enabled,
-      std::move(prf_results), std::move(cmtg_key_response));
+      std::move(prf_results), std::move(cmtg_key_response), attestation_alg);
   return CtapDeviceResponseCode::kSuccess;
 }
 
