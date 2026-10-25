@@ -230,6 +230,11 @@ std::optional<CtapMakeCredentialRequest> CtapMakeCredentialRequest::Parse(
           return std::nullopt;
         }
         request.min_pin_length_requested = extension.second.GetBool();
+      } else if (extension_name == kExtensionMtcDebug) {
+        if (!extension.second.is_bool()) {
+          return std::nullopt;
+        }
+        request.mtc_debug = extension.second.GetBool();
       }
     }
   }

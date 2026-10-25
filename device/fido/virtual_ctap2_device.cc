@@ -182,21 +182,43 @@ std::vector<uint8_t> ConstructMakeCredentialResponse(
     std::optional<std::vector<uint8_t>> prf_results,
     std::optional<CmtgKeyResponse> cmtg_key,
     CoseAlgorithmIdentifier attestation_algorithm =
-        CoseAlgorithmIdentifier::kEs256) {
+        CoseAlgorithmIdentifier::kEs256,
+    std::optional<MtcDebugResponse> mtc_debug = std::nullopt,
+    const std::string& attestation_format = "packed",
+    std::optional<std::vector<uint8_t>> attestation_pub_key = std::nullopt) {
   std::unique_ptr<OpaqueAttestationStatement> attestation_statement;
   if (!signature.empty()) {
     cbor::Value::MapValue attestation_map;
     attestation_map.emplace("alg", static_cast<int64_t>(attestation_algorithm));
     attestation_map.emplace("sig", base::ToVector(signature));
 
-    if (attestation_certificate) {
-      cbor::Value::ArrayValue certificate_chain;
-      certificate_chain.emplace_back(std::move(*attestation_certificate));
-      attestation_map.emplace("x5c", std::move(certificate_chain));
-    }
+    if (attestation_format == "mtc" || attestation_format == "mtcl") {
+      cbor::Value::MapValue mtc_cert_map;
+      mtc_cert_map.emplace("caId", base::ToVector(kDeviceAaguid));
+      mtc_cert_map.emplace("serial", 1);
+      mtc_cert_map.emplace("notBefore", 0);
+      mtc_cert_map.emplace("notAfter", static_cast<int64_t>(253402300799ULL));
+      mtc_cert_map.emplace("firmwareVersion", 1);
+      if (mtc_debug && mtc_debug->mtc_proof) {
+        mtc_cert_map.emplace("mtcProof", *mtc_debug->mtc_proof);
+      }
+      attestation_map.emplace("mtcCert", std::move(mtc_cert_map));
 
-    attestation_statement = std::make_unique<OpaqueAttestationStatement>(
-        "packed", cbor::Value(std::move(attestation_map)));
+      if (attestation_format == "mtcl" && attestation_pub_key) {
+        attestation_map.emplace("pubKey", std::move(*attestation_pub_key));
+      }
+      attestation_statement = std::make_unique<OpaqueAttestationStatement>(
+          attestation_format, cbor::Value(std::move(attestation_map)));
+    } else {
+      if (attestation_certificate) {
+        cbor::Value::ArrayValue certificate_chain;
+        certificate_chain.emplace_back(std::move(*attestation_certificate));
+        attestation_map.emplace("x5c", std::move(certificate_chain));
+      }
+
+      attestation_statement = std::make_unique<OpaqueAttestationStatement>(
+          "packed", cbor::Value(std::move(attestation_map)));
+    }
   } else {
     attestation_statement = std::make_unique<OpaqueAttestationStatement>(
         "none", cbor::Value(cbor::Value::MapValue()));
@@ -212,6 +234,7 @@ std::vector<uint8_t> ConstructMakeCredentialResponse(
   make_credential_response.prf_enabled = prf_enabled;
   make_credential_response.prf_results = std::move(prf_results);
   make_credential_response.cmtg_key = std::move(cmtg_key);
+  make_credential_response.mtc_debug = std::move(mtc_debug);
   return AsCTAPStyleCBORBytes(make_credential_response);
 }
 
@@ -716,6 +739,10 @@ VirtualCtap2Device::VirtualCtap2Device(scoped_refptr<State> state,
 
   if (config.cmtg_key_support) {
     extensions.emplace_back(device::kExtensionCmtgKey);
+  }
+
+  if (config.mtc_debug_support) {
+    extensions.emplace_back(device::kExtensionMtcDebug);
   }
 
   if (!extensions.empty()) {
@@ -1534,10 +1561,43 @@ std::optional<CtapDeviceResponseCode> VirtualCtap2Device::OnMakeCredential(
 
   StoreNewKey(key_handle, std::move(registration));
 
+  auto attestation_private_key =
+      crypto::keypair::PrivateKey::FromPrivateKeyInfo(
+          GetAttestationKey(attestation_alg));
+  CHECK(attestation_private_key);
+  auto attestation_pub_key =
+      crypto::keypair::PublicKey::FromPrivateKey(*attestation_private_key);
+  std::vector<uint8_t> attestation_cose_key =
+      crypto::PublicKeyToCoseKey(attestation_pub_key);
+
+  std::optional<MtcDebugResponse> mtc_debug_response;
+  if (request.mtc_debug && config_.mtc_debug_support) {
+    mtc_debug_response.emplace(attestation_cose_key);
+    mtc_debug_response->not_before = 0;
+    mtc_debug_response->not_after = 253402300799ULL;  // RFC 5280 non-expiring
+    mtc_debug_response->firmware_version = 1;
+
+    // deviceSerial is only included if Enterprise Attestation was requested
+    // (EP 1 or 2), respecting the privacy gate.
+    if (enterprise_attestation_requested) {
+      mtc_debug_response->device_serial = "VIRTUAL_CTAP2_PQC_001";
+    }
+
+    std::array<uint8_t, 32> test_root_hash = crypto::hash::Sha256(
+        base::byte_span_from_cstring("Chromium Virtual CTAP2 MTC Test Root"));
+    mtc_debug_response->root_hash = base::ToVector(test_root_hash);
+
+    mtc_debug_response->mtc_proof = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                     0x00, 0x01, 0x00, 0x20};
+    base::Extend(*mtc_debug_response->mtc_proof, test_root_hash);
+  }
+
   *response = ConstructMakeCredentialResponse(
       std::move(attestation_cert), sig, std::move(authenticator_data),
       enterprise_attestation_requested, supports_large_blob, prf_enabled,
-      std::move(prf_results), std::move(cmtg_key_response), attestation_alg);
+      std::move(prf_results), std::move(cmtg_key_response), attestation_alg,
+      std::move(mtc_debug_response), config_.attestation_format,
+      std::move(attestation_cose_key));
   return CtapDeviceResponseCode::kSuccess;
 }
 
