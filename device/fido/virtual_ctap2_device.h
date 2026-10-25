@@ -204,6 +204,14 @@ class COMPONENT_EXPORT(DEVICE_FIDO) VirtualCtap2Device
     // key matching the credential's algorithm if supported (or ES256).
     std::optional<device::CoseAlgorithmIdentifier> batch_attestation_algorithm;
 
+    // mtc_debug_support indicates whether the authenticator supports the
+    // mtc-debug diagnostic extension during registration.
+    bool mtc_debug_support = true;
+
+    // attestation_format specifies the attestation format to generate:
+    // "packed" (default), "mtc", or "mtcl".
+    std::string attestation_format = "packed";
+
     // support_enterprise_attestation indicates whether enterprise attestation
     // support will be advertised in the getInfo response and whether requests
     // will be honored during makeCredential.

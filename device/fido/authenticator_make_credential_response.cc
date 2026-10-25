@@ -135,6 +135,34 @@ std::vector<uint8_t> AsCTAPStyleCBORBytes(
         cbor::Value(device::kExtensionCmtgKey),
         cbor::Value(response.cmtg_key->signature));
   }
+  if (response.mtc_debug) {
+    cbor::Value::MapValue mtc_map;
+    mtc_map.emplace("pubKey", response.mtc_debug->pub_key);
+    if (response.mtc_debug->device_serial) {
+      mtc_map.emplace("deviceSerial", *response.mtc_debug->device_serial);
+    }
+    if (response.mtc_debug->not_before) {
+      mtc_map.emplace("notBefore",
+                      static_cast<int64_t>(*response.mtc_debug->not_before));
+    }
+    if (response.mtc_debug->not_after) {
+      mtc_map.emplace("notAfter",
+                      static_cast<int64_t>(*response.mtc_debug->not_after));
+    }
+    if (response.mtc_debug->firmware_version) {
+      mtc_map.emplace("firmwareVersion",
+                      static_cast<int64_t>(*response.mtc_debug->firmware_version));
+    }
+    if (response.mtc_debug->mtc_proof) {
+      mtc_map.emplace("mtcProof", *response.mtc_debug->mtc_proof);
+    }
+    if (response.mtc_debug->root_hash) {
+      mtc_map.emplace("rootHash", *response.mtc_debug->root_hash);
+    }
+    unsigned_extension_outputs.emplace(
+        cbor::Value(device::kExtensionMtcDebug),
+        cbor::Value(std::move(mtc_map)));
+  }
   if (!unsigned_extension_outputs.empty()) {
     map.emplace(6, std::move(unsigned_extension_outputs));
   }

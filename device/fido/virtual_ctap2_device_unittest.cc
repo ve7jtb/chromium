@@ -11,13 +11,19 @@
 #include <utility>
 #include <vector>
 
+#include "base/base64.h"
 #include "base/check.h"
 #include "base/containers/span.h"
 #include "base/containers/to_vector.h"
+#include "base/files/file_path.h"
+#include "base/files/file_util.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
+#include "base/json/json_writer.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/numerics/byte_conversions.h"
+#include "base/strings/stringprintf.h"
+#include "base/values.h"
 #include "base/test/bind.h"
 #include "base/test/task_environment.h"
 #include "base/test/test_future.h"
@@ -35,6 +41,7 @@
 #include "device/fido/fido_device.h"
 #include "device/fido/fido_test_data.h"
 #include "device/fido/large_blob.h"
+#include "device/fido/public_key.h"
 #include "device/fido/public/fido_constants.h"
 #include "device/fido/public/fido_transport_protocol.h"
 #include "device/fido/public/fido_types.h"
@@ -293,6 +300,338 @@ TEST_F(VirtualCtap2DeviceTest, PostQuantumBatchAttestationIsValid) {
     ASSERT_TRUE(alg_it != att_map.end());
     EXPECT_EQ(alg_it->second.GetInteger(), alg);
   }
+}
+
+// Tests that requesting mtc-debug returns valid MTC diagnostic data and
+// reuses the exact same attestation public key across batch algorithms.
+TEST_F(VirtualCtap2DeviceTest, PostQuantumMtcDebugExtension) {
+  for (int32_t alg : {-48, -49, -50}) {
+    SCOPED_TRACE(alg);
+    scoped_refptr<VirtualFidoDevice::State> state =
+        base::MakeRefCounted<VirtualFidoDevice::State>();
+    VirtualCtap2Device::Config config;
+    MakeDevice(state, config);
+
+    PublicKeyCredentialRpEntity rp("acme.com");
+    PublicKeyCredentialUserEntity user(base::ToVector(test_data::kUserId));
+    CtapMakeCredentialRequest request(
+        test_data::kClientDataJson, std::move(rp), std::move(user),
+        PublicKeyCredentialParams({{CredentialType::kPublicKey, alg}}));
+    request.mtc_debug = true;
+
+    TestFuture future;
+    SendCommand(device_.get(), ToCTAP2Command(AsCTAPRequestValuePair(request)),
+                future.GetCallback());
+    EXPECT_TRUE(future.Wait());
+
+    std::optional<cbor::Value> cbor = DecodeCBOR(future.Take().value());
+    ASSERT_TRUE(cbor);
+    std::optional<AuthenticatorMakeCredentialResponse> response =
+        ReadCTAPMakeCredentialResponse(
+            FidoTransportProtocol::kUsbHumanInterfaceDevice, std::move(cbor));
+    ASSERT_TRUE(response);
+    ASSERT_TRUE(response->mtc_debug.has_value());
+
+    // Verify mtc_debug public key matches the attestation key
+    const std::vector<uint8_t>& pub_key_cbor = response->mtc_debug->pub_key;
+    EXPECT_FALSE(pub_key_cbor.empty());
+
+    std::optional<cbor::Value> key_cbor = cbor::Reader::Read(pub_key_cbor);
+    ASSERT_TRUE(key_cbor && key_cbor->is_map());
+    std::unique_ptr<PublicKey> parsed_key =
+        PublicKey::FromCOSEKey(alg, pub_key_cbor, key_cbor->GetMap());
+    ASSERT_TRUE(parsed_key);
+    EXPECT_EQ(parsed_key->algorithm, alg);
+
+    // Verify MTC diagnostic parameters
+    EXPECT_EQ(response->mtc_debug->not_before, 0u);
+    EXPECT_EQ(response->mtc_debug->not_after, 253402300799ULL);
+    EXPECT_EQ(response->mtc_debug->firmware_version, 1u);
+    EXPECT_TRUE(response->mtc_debug->root_hash.has_value());
+    EXPECT_EQ(response->mtc_debug->root_hash->size(), 32u);
+    EXPECT_TRUE(response->mtc_debug->mtc_proof.has_value());
+
+    // Without Enterprise Attestation, deviceSerial MUST NOT be returned
+    EXPECT_FALSE(response->mtc_debug->device_serial.has_value());
+  }
+}
+
+// Tests that mtc-debug returns deviceSerial when Enterprise Attestation is requested.
+TEST_F(VirtualCtap2DeviceTest, PostQuantumMtcDebugEnterpriseAttestation) {
+  scoped_refptr<VirtualFidoDevice::State> state =
+      base::MakeRefCounted<VirtualFidoDevice::State>();
+  VirtualCtap2Device::Config config;
+  config.support_enterprise_attestation = true;
+  config.enterprise_attestation_rps = {"acme.com"};
+  MakeDevice(state, config);
+
+  PublicKeyCredentialRpEntity rp("acme.com");
+  PublicKeyCredentialUserEntity user(base::ToVector(test_data::kUserId));
+  CtapMakeCredentialRequest request(
+      test_data::kClientDataJson, std::move(rp), std::move(user),
+      PublicKeyCredentialParams(
+          {{CredentialType::kPublicKey,
+            static_cast<int32_t>(CoseAlgorithmIdentifier::kMlDsa44)}}));
+  request.mtc_debug = true;
+  request.attestation_preference =
+      AttestationConveyancePreference::kEnterpriseIfRPListedOnAuthenticator;
+
+  TestFuture future;
+  SendCommand(device_.get(), ToCTAP2Command(AsCTAPRequestValuePair(request)),
+              future.GetCallback());
+  EXPECT_TRUE(future.Wait());
+
+  std::optional<cbor::Value> cbor = DecodeCBOR(future.Take().value());
+  ASSERT_TRUE(cbor);
+  std::optional<AuthenticatorMakeCredentialResponse> response =
+      ReadCTAPMakeCredentialResponse(
+          FidoTransportProtocol::kUsbHumanInterfaceDevice, std::move(cbor));
+  ASSERT_TRUE(response);
+  ASSERT_TRUE(response->mtc_debug.has_value());
+  EXPECT_TRUE(response->mtc_debug->device_serial.has_value());
+  EXPECT_EQ(*response->mtc_debug->device_serial, "VIRTUAL_CTAP2_PQC_001");
+}
+
+// Tests that VirtualCtap2Device can generate fmt: "mtc" and fmt: "mtcl"
+// attestation statements with PQC algorithms.
+TEST_F(VirtualCtap2DeviceTest, PostQuantumMtcAttestationFormats) {
+  for (const std::string& fmt : {"mtc", "mtcl"}) {
+    SCOPED_TRACE(fmt);
+    scoped_refptr<VirtualFidoDevice::State> state =
+        base::MakeRefCounted<VirtualFidoDevice::State>();
+    VirtualCtap2Device::Config config;
+    config.attestation_format = fmt;
+    MakeDevice(state, config);
+
+    PublicKeyCredentialRpEntity rp("acme.com");
+    PublicKeyCredentialUserEntity user(base::ToVector(test_data::kUserId));
+    CtapMakeCredentialRequest request(
+        test_data::kClientDataJson, std::move(rp), std::move(user),
+        PublicKeyCredentialParams(
+            {{CredentialType::kPublicKey,
+              static_cast<int32_t>(CoseAlgorithmIdentifier::kMlDsa65)}}));
+    request.mtc_debug = true;
+
+    TestFuture future;
+    SendCommand(device_.get(), ToCTAP2Command(AsCTAPRequestValuePair(request)),
+                future.GetCallback());
+    EXPECT_TRUE(future.Wait());
+
+    std::optional<cbor::Value> cbor = DecodeCBOR(future.Take().value());
+    ASSERT_TRUE(cbor);
+    std::optional<AuthenticatorMakeCredentialResponse> response =
+        ReadCTAPMakeCredentialResponse(
+            FidoTransportProtocol::kUsbHumanInterfaceDevice, std::move(cbor));
+    ASSERT_TRUE(response);
+
+    const AttestationStatement& attestation =
+        response->attestation_object.attestation_statement();
+    EXPECT_EQ(attestation.format_name(), fmt);
+
+    const cbor::Value& att_cbor = attestation.AsCBOR();
+    ASSERT_TRUE(att_cbor.is_map());
+    const auto& att_map = att_cbor.GetMap();
+
+    auto alg_it = att_map.find(cbor::Value("alg"));
+    ASSERT_TRUE(alg_it != att_map.end());
+    EXPECT_EQ(alg_it->second.GetInteger(), -49);
+
+    auto sig_it = att_map.find(cbor::Value("sig"));
+    ASSERT_TRUE(sig_it != att_map.end() && sig_it->second.is_bytestring());
+
+    auto mtc_cert_it = att_map.find(cbor::Value("mtcCert"));
+    ASSERT_TRUE(mtc_cert_it != att_map.end() && mtc_cert_it->second.is_map());
+    const auto& cert_map = mtc_cert_it->second.GetMap();
+    EXPECT_TRUE(cert_map.contains(cbor::Value("caId")));
+    EXPECT_TRUE(cert_map.contains(cbor::Value("serial")));
+    EXPECT_TRUE(cert_map.contains(cbor::Value("notBefore")));
+    EXPECT_TRUE(cert_map.contains(cbor::Value("notAfter")));
+
+    if (fmt == "mtcl") {
+      auto pubkey_it = att_map.find(cbor::Value("pubKey"));
+      ASSERT_TRUE(pubkey_it != att_map.end() && pubkey_it->second.is_bytestring());
+      EXPECT_EQ(pubkey_it->second.GetBytestring(), response->mtc_debug->pub_key);
+    }
+  }
+}
+
+// Exports PQC batch certificates and FIDO MDS3 statements for test RP servers.
+TEST_F(VirtualCtap2DeviceTest, PostQuantumExportMdsAndCertificates) {
+  const base::FilePath output_dir(
+      FILE_PATH_LITERAL("/Users/jbradley/.gemini/antigravity/scratch/mds"));
+  base::CreateDirectory(output_dir);
+
+  struct ExportSpec {
+    int32_t alg;
+    const char* name;
+  };
+  const ExportSpec kSpecs[] = {
+      {-48, "mldsa44"},
+      {-49, "mldsa65"},
+      {-50, "mldsa87"},
+      {-7, "es256"},
+  };
+
+  std::vector<std::string> b64_certs;
+  std::vector<std::string> b64_cose_keys;
+
+  for (const auto& spec : kSpecs) {
+    scoped_refptr<VirtualFidoDevice::State> state =
+        base::MakeRefCounted<VirtualFidoDevice::State>();
+    VirtualCtap2Device::Config config;
+    MakeDevice(state, config);
+
+    PublicKeyCredentialRpEntity rp("acme.com");
+    PublicKeyCredentialUserEntity user(base::ToVector(test_data::kUserId));
+    CtapMakeCredentialRequest request(
+        test_data::kClientDataJson, std::move(rp), std::move(user),
+        PublicKeyCredentialParams({{CredentialType::kPublicKey, spec.alg}}));
+    request.mtc_debug = true;
+
+    TestFuture future;
+    SendCommand(device_.get(), ToCTAP2Command(AsCTAPRequestValuePair(request)),
+                future.GetCallback());
+    EXPECT_TRUE(future.Wait());
+
+    std::optional<cbor::Value> cbor = DecodeCBOR(future.Take().value());
+    ASSERT_TRUE(cbor);
+    std::optional<AuthenticatorMakeCredentialResponse> response =
+        ReadCTAPMakeCredentialResponse(
+            FidoTransportProtocol::kUsbHumanInterfaceDevice, std::move(cbor));
+    ASSERT_TRUE(response);
+
+    // 1. Get DER certificate from attestation statement
+    const AttestationStatement& attestation =
+        response->attestation_object.attestation_statement();
+    ASSERT_TRUE(attestation.GetLeafCertificate().has_value());
+    base::span<const uint8_t> cert_der = *attestation.GetLeafCertificate();
+    std::string b64_cert = base::Base64Encode(cert_der);
+    b64_certs.push_back(b64_cert);
+
+    std::string pem = "-----BEGIN CERTIFICATE-----\n";
+    for (size_t i = 0; i < b64_cert.size(); i += 64) {
+      pem += b64_cert.substr(i, 64) + "\n";
+    }
+    pem += "-----END CERTIFICATE-----\n";
+    base::WriteFile(
+        output_dir.AppendASCII(base::StringPrintf("batch_%s.pem", spec.name)),
+        pem);
+
+    // 2. Get canonical CBOR COSE_Key from mtc_debug
+    ASSERT_TRUE(response->mtc_debug.has_value());
+    const std::vector<uint8_t>& pub_key_cbor = response->mtc_debug->pub_key;
+    b64_cose_keys.push_back(base::Base64Encode(pub_key_cbor));
+    base::WriteFile(
+        output_dir.AppendASCII(
+            base::StringPrintf("batch_%s_cose.cbor", spec.name)),
+        pub_key_cbor);
+  }
+
+  // 3. Output FIDO MDS3 MetadataStatement JSON
+  std::string roots_json = "[\n";
+  for (size_t i = 0; i < b64_certs.size(); ++i) {
+    roots_json += "    \"" + b64_certs[i] + "\"" +
+                  (i + 1 < b64_certs.size() ? ",\n" : "\n  ]");
+  }
+
+  std::array<uint8_t, 32> test_root_hash = crypto::hash::Sha256(
+      base::byte_span_from_cstring("Chromium Virtual CTAP2 MTC Test Root"));
+  std::string b64_root_hash = base::Base64Encode(test_root_hash);
+
+  std::string mds_json = base::StringPrintf(
+      "{\n"
+      "  \"legalHeader\": \"https://fidoalliance.org/metadata/metadata-statement-legal-header/\",\n"
+      "  \"aaguid\": \"01020304-0506-0708-0102-030405060708\",\n"
+      "  \"description\": \"Chromium Virtual CTAP2 Device (Post-Quantum ML-DSA & MTC Batch Attestation)\",\n"
+      "  \"authenticatorVersion\": 1,\n"
+      "  \"protocolFamily\": \"fido2\",\n"
+      "  \"schema\": 3,\n"
+      "  \"upv\": [{\"major\": 1, \"minor\": 0}],\n"
+      "  \"authenticationAlgorithms\": [\"secp256r1_ecdsa_sha256_raw\"],\n"
+      "  \"publicKeyAlgAndEncodings\": [-48, -49, -50, -7],\n"
+      "  \"attestationTypes\": [\"basic_full\"],\n"
+      "  \"userVerificationDetails\": [[{\"userVerificationMethod\": \"presence_internal\"}]],\n"
+      "  \"keyProtection\": [\"hardware\"],\n"
+      "  \"isKeyRestricted\": true,\n"
+      "  \"isFreshUserVerificationRequired\": false,\n"
+      "  \"matcherProtection\": [\"on_chip\"],\n"
+      "  \"attachmentHint\": [\"external\"],\n"
+      "  \"tcDisplay\": [],\n"
+      "  \"attestationRootCertificates\": %s,\n"
+      "  \"mtcTrustAnchors\": [\n"
+      "    {\n"
+      "      \"caId\": \"AQIDBAUGBwgBAgMEBQYHCA==\",\n"
+      "      \"logNumber\": 0,\n"
+      "      \"trustedSubtrees\": [\n"
+      "        {\n"
+      "          \"start\": 0,\n"
+      "          \"end\": 1,\n"
+      "          \"rootHash\": \"%s\"\n"
+      "        }\n"
+      "      ],\n"
+      "      \"batchKeys\": {\n"
+      "        \"1\": {\n"
+      "          \"algorithm\": -48,\n"
+      "          \"publicKey\": \"%s\",\n"
+      "          \"notBefore\": 0,\n"
+      "          \"notAfter\": 253402300799,\n"
+      "          \"firmwareVersion\": 1\n"
+      "        },\n"
+      "        \"2\": {\n"
+      "          \"algorithm\": -49,\n"
+      "          \"publicKey\": \"%s\",\n"
+      "          \"notBefore\": 0,\n"
+      "          \"notAfter\": 253402300799,\n"
+      "          \"firmwareVersion\": 1\n"
+      "        },\n"
+      "        \"3\": {\n"
+      "          \"algorithm\": -50,\n"
+      "          \"publicKey\": \"%s\",\n"
+      "          \"notBefore\": 0,\n"
+      "          \"notAfter\": 253402300799,\n"
+      "          \"firmwareVersion\": 1\n"
+      "        },\n"
+      "        \"4\": {\n"
+      "          \"algorithm\": -7,\n"
+      "          \"publicKey\": \"%s\",\n"
+      "          \"notBefore\": 0,\n"
+      "          \"notAfter\": 253402300799,\n"
+      "          \"firmwareVersion\": 1\n"
+      "        }\n"
+      "      }\n"
+      "    }\n"
+      "  ]\n"
+      "}\n",
+      roots_json.c_str(), b64_root_hash.c_str(), b64_cose_keys[0].c_str(),
+      b64_cose_keys[1].c_str(), b64_cose_keys[2].c_str(), b64_cose_keys[3].c_str());
+
+  base::WriteFile(
+      output_dir.AppendASCII("pqc_virtual_authenticator_mds.json"), mds_json);
+
+  // 4. Output MetadataBLOBPayload wrapper format for Yubico server
+  std::string blob_json = base::StringPrintf(
+      "{\n"
+      "  \"legalHeader\": \"https://fidoalliance.org/metadata/metadata-statement-legal-header/\",\n"
+      "  \"no\": 1,\n"
+      "  \"nextUpdate\": \"2030-01-01\",\n"
+      "  \"entries\": [\n"
+      "    {\n"
+      "      \"aaguid\": \"01020304-0506-0708-0102-030405060708\",\n"
+      "      \"statusReports\": [\n"
+      "        {\n"
+      "          \"status\": \"FIDO_CERTIFIED\",\n"
+      "          \"effectiveDate\": \"2026-10-25\"\n"
+      "        }\n"
+      "      ],\n"
+      "      \"timeOfLastStatusChange\": \"2026-10-25\",\n"
+      "      \"metadataStatement\": %s\n"
+      "    }\n"
+      "  ]\n"
+      "}\n",
+      mds_json.c_str());
+
+  base::WriteFile(
+      output_dir.AppendASCII("pqc_virtual_authenticator_blob.json"), blob_json);
 }
 
 TEST_F(VirtualCtap2DeviceTest, RejectsCredentialsWithExtraKeys) {
