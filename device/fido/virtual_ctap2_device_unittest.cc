@@ -392,67 +392,61 @@ TEST_F(VirtualCtap2DeviceTest, PostQuantumMtcDebugEnterpriseAttestation) {
   EXPECT_EQ(*response->mtc_debug->device_serial, "VIRTUAL_CTAP2_PQC_001");
 }
 
-// Tests that VirtualCtap2Device can generate fmt: "mtc" and fmt: "mtcl"
+// Tests that VirtualCtap2Device can generate fmt: "mtc"
 // attestation statements with PQC algorithms.
 TEST_F(VirtualCtap2DeviceTest, PostQuantumMtcAttestationFormats) {
-  for (const std::string& fmt : {"mtc", "mtcl"}) {
-    SCOPED_TRACE(fmt);
-    scoped_refptr<VirtualFidoDevice::State> state =
-        base::MakeRefCounted<VirtualFidoDevice::State>();
-    VirtualCtap2Device::Config config;
-    config.attestation_format = fmt;
-    MakeDevice(state, config);
+  scoped_refptr<VirtualFidoDevice::State> state =
+      base::MakeRefCounted<VirtualFidoDevice::State>();
+  VirtualCtap2Device::Config config;
+  config.attestation_format = "mtc";
+  MakeDevice(state, config);
 
-    PublicKeyCredentialRpEntity rp("acme.com");
-    PublicKeyCredentialUserEntity user(base::ToVector(test_data::kUserId));
-    CtapMakeCredentialRequest request(
-        test_data::kClientDataJson, std::move(rp), std::move(user),
-        PublicKeyCredentialParams(
-            {{CredentialType::kPublicKey,
-              static_cast<int32_t>(CoseAlgorithmIdentifier::kMlDsa65)}}));
-    request.mtc_debug = true;
+  PublicKeyCredentialRpEntity rp("acme.com");
+  PublicKeyCredentialUserEntity user(base::ToVector(test_data::kUserId));
+  CtapMakeCredentialRequest request(
+      test_data::kClientDataJson, std::move(rp), std::move(user),
+      PublicKeyCredentialParams(
+          {{CredentialType::kPublicKey,
+            static_cast<int32_t>(CoseAlgorithmIdentifier::kMlDsa65)}}));
+  request.mtc_debug = true;
 
-    TestFuture future;
-    SendCommand(device_.get(), ToCTAP2Command(AsCTAPRequestValuePair(request)),
-                future.GetCallback());
-    EXPECT_TRUE(future.Wait());
+  TestFuture future;
+  SendCommand(device_.get(), ToCTAP2Command(AsCTAPRequestValuePair(request)),
+              future.GetCallback());
+  EXPECT_TRUE(future.Wait());
 
-    std::optional<cbor::Value> cbor = DecodeCBOR(future.Take().value());
-    ASSERT_TRUE(cbor);
-    std::optional<AuthenticatorMakeCredentialResponse> response =
-        ReadCTAPMakeCredentialResponse(
-            FidoTransportProtocol::kUsbHumanInterfaceDevice, std::move(cbor));
-    ASSERT_TRUE(response);
+  std::optional<cbor::Value> cbor = DecodeCBOR(future.Take().value());
+  ASSERT_TRUE(cbor);
+  std::optional<AuthenticatorMakeCredentialResponse> response =
+      ReadCTAPMakeCredentialResponse(
+          FidoTransportProtocol::kUsbHumanInterfaceDevice, std::move(cbor));
+  ASSERT_TRUE(response);
 
-    const AttestationStatement& attestation =
-        response->attestation_object.attestation_statement();
-    EXPECT_EQ(attestation.format_name(), fmt);
+  const AttestationStatement& attestation =
+      response->attestation_object.attestation_statement();
+  EXPECT_EQ(attestation.format_name(), "mtc");
 
-    const cbor::Value& att_cbor = attestation.AsCBOR();
-    ASSERT_TRUE(att_cbor.is_map());
-    const auto& att_map = att_cbor.GetMap();
+  const cbor::Value& att_cbor = attestation.AsCBOR();
+  ASSERT_TRUE(att_cbor.is_map());
+  const auto& att_map = att_cbor.GetMap();
 
-    auto alg_it = att_map.find(cbor::Value("alg"));
-    ASSERT_TRUE(alg_it != att_map.end());
-    EXPECT_EQ(alg_it->second.GetInteger(), -49);
+  auto alg_it = att_map.find(cbor::Value("alg"));
+  ASSERT_TRUE(alg_it != att_map.end());
+  EXPECT_EQ(alg_it->second.GetInteger(), -49);
 
-    auto sig_it = att_map.find(cbor::Value("sig"));
-    ASSERT_TRUE(sig_it != att_map.end() && sig_it->second.is_bytestring());
+  auto sig_it = att_map.find(cbor::Value("sig"));
+  ASSERT_TRUE(sig_it != att_map.end() && sig_it->second.is_bytestring());
 
-    auto mtc_cert_it = att_map.find(cbor::Value("mtcCert"));
-    ASSERT_TRUE(mtc_cert_it != att_map.end() && mtc_cert_it->second.is_map());
-    const auto& cert_map = mtc_cert_it->second.GetMap();
-    EXPECT_TRUE(cert_map.contains(cbor::Value("caId")));
-    EXPECT_TRUE(cert_map.contains(cbor::Value("serial")));
-    EXPECT_TRUE(cert_map.contains(cbor::Value("notBefore")));
-    EXPECT_TRUE(cert_map.contains(cbor::Value("notAfter")));
+  auto mtc_cert_it = att_map.find(cbor::Value("mtcCert"));
+  ASSERT_TRUE(mtc_cert_it != att_map.end() && mtc_cert_it->second.is_map());
+  const auto& cert_map = mtc_cert_it->second.GetMap();
+  EXPECT_TRUE(cert_map.contains(cbor::Value("caId")));
+  EXPECT_TRUE(cert_map.contains(cbor::Value("serial")));
+  EXPECT_TRUE(cert_map.contains(cbor::Value("notBefore")));
+  EXPECT_TRUE(cert_map.contains(cbor::Value("notAfter")));
 
-    if (fmt == "mtcl") {
-      auto pubkey_it = att_map.find(cbor::Value("pubKey"));
-      ASSERT_TRUE(pubkey_it != att_map.end() && pubkey_it->second.is_bytestring());
-      EXPECT_EQ(pubkey_it->second.GetBytestring(), response->mtc_debug->pub_key);
-    }
-  }
+  // In fmt: "mtc", pubKey is omitted from attStmt on the wire!
+  EXPECT_FALSE(att_map.contains(cbor::Value("pubKey")));
 }
 
 // Exports PQC batch certificates and FIDO MDS3 statements for test RP servers.
@@ -547,7 +541,7 @@ TEST_F(VirtualCtap2DeviceTest, PostQuantumExportMdsAndCertificates) {
       "  \"protocolFamily\": \"fido2\",\n"
       "  \"schema\": 3,\n"
       "  \"upv\": [{\"major\": 1, \"minor\": 0}],\n"
-      "  \"authenticationAlgorithms\": [\"secp256r1_ecdsa_sha256_raw\"],\n"
+      "  \"authenticationAlgorithms\": [\"secp256r1_ecdsa_sha256_raw\", \"ml_dsa_44\", \"ml_dsa_65\", \"ml_dsa_87\"],\n"
       "  \"publicKeyAlgAndEncodings\": [-48, -49, -50, -7],\n"
       "  \"attestationTypes\": [\"basic_full\"],\n"
       "  \"userVerificationDetails\": [[{\"userVerificationMethod\": \"presence_internal\"}]],\n"
