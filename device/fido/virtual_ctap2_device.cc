@@ -184,15 +184,14 @@ std::vector<uint8_t> ConstructMakeCredentialResponse(
     CoseAlgorithmIdentifier attestation_algorithm =
         CoseAlgorithmIdentifier::kEs256,
     std::optional<MtcDebugResponse> mtc_debug = std::nullopt,
-    const std::string& attestation_format = "packed",
-    std::optional<std::vector<uint8_t>> attestation_pub_key = std::nullopt) {
+    const std::string& attestation_format = "packed") {
   std::unique_ptr<OpaqueAttestationStatement> attestation_statement;
   if (!signature.empty()) {
     cbor::Value::MapValue attestation_map;
     attestation_map.emplace("alg", static_cast<int64_t>(attestation_algorithm));
     attestation_map.emplace("sig", base::ToVector(signature));
 
-    if (attestation_format == "mtc" || attestation_format == "mtcl") {
+    if (attestation_format == "mtc") {
       cbor::Value::MapValue mtc_cert_map;
       mtc_cert_map.emplace("caId", base::ToVector(kDeviceAaguid));
       mtc_cert_map.emplace("serial", 1);
@@ -204,11 +203,8 @@ std::vector<uint8_t> ConstructMakeCredentialResponse(
       }
       attestation_map.emplace("mtcCert", std::move(mtc_cert_map));
 
-      if (attestation_format == "mtcl" && attestation_pub_key) {
-        attestation_map.emplace("pubKey", std::move(*attestation_pub_key));
-      }
       attestation_statement = std::make_unique<OpaqueAttestationStatement>(
-          attestation_format, cbor::Value(std::move(attestation_map)));
+          "mtc", cbor::Value(std::move(attestation_map)));
     } else {
       if (attestation_certificate) {
         cbor::Value::ArrayValue certificate_chain;
@@ -1596,8 +1592,7 @@ std::optional<CtapDeviceResponseCode> VirtualCtap2Device::OnMakeCredential(
       std::move(attestation_cert), sig, std::move(authenticator_data),
       enterprise_attestation_requested, supports_large_blob, prf_enabled,
       std::move(prf_results), std::move(cmtg_key_response), attestation_alg,
-      std::move(mtc_debug_response), config_.attestation_format,
-      std::move(attestation_cose_key));
+      std::move(mtc_debug_response), config_.attestation_format);
   return CtapDeviceResponseCode::kSuccess;
 }
 

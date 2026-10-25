@@ -209,7 +209,7 @@ class COMPONENT_EXPORT(DEVICE_FIDO) VirtualCtap2Device
     bool mtc_debug_support = true;
 
     // attestation_format specifies the attestation format to generate:
-    // "packed" (default), "mtc", or "mtcl".
+    // "packed" (default) or "mtc".
     std::string attestation_format = "packed";
 
     // support_enterprise_attestation indicates whether enterprise attestation
