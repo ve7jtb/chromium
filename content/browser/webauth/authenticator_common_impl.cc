@@ -142,6 +142,7 @@ enum class RequestExtension {
   kMinPINLength,
   kCrossDeviceFallbackUrl,
   kCmtgKey,
+  kMtcDebug,
   kRemoteClientDataJSON,
 };
 
@@ -1502,6 +1503,10 @@ void AuthenticatorCommonImpl::ContinueMakeCredentialAfterRpIdCheck(
     req_state_->requested_extensions.insert(RequestExtension::kCmtgKey);
     ctap_make_credential_request->cmtg_key = true;
   }
+  if (options->mtc_debug) {
+    req_state_->requested_extensions.insert(RequestExtension::kMtcDebug);
+    ctap_make_credential_request->mtc_debug = true;
+  }
   make_credential_options->large_blob_support = options->large_blob_enable;
   ctap_make_credential_request->app_id_exclude = std::move(appid_exclude);
   make_credential_options->is_off_the_record_context =
@@ -2766,11 +2771,16 @@ void AuthenticatorCommonImpl::OnRegisterResponse(
     attestation_erasure = AttestationErasureOption::kIncludeAttestation;
   }
 
-  CompleteMakeCredentialRequest(
-      blink::mojom::AuthenticatorStatus::SUCCESS,
-      CreateMakeCredentialResponse(std::move(*response_data),
-                                   *attestation_erasure),
-      nullptr, Focus::kDoCheck);
+  auto response = CreateMakeCredentialResponse(std::move(*response_data),
+                                               *attestation_erasure);
+  if (!response) {
+    FIDO_LOG(ERROR) << "Failed to create make credential response";
+    CompleteMakeCredentialRequest(
+        blink::mojom::AuthenticatorStatus::NOT_ALLOWED_ERROR, nullptr, nullptr);
+    return;
+  }
+  CompleteMakeCredentialRequest(blink::mojom::AuthenticatorStatus::SUCCESS,
+                                std::move(response), nullptr, Focus::kDoCheck);
 }
 
 void AuthenticatorCommonImpl::OnSignResponse(
@@ -3216,6 +3226,52 @@ AuthenticatorCommonImpl::CreateMakeCredentialResponse(
               std::move(response_data.cmtg_key->signature);
         }
         break;
+      case RequestExtension::kMtcDebug:
+        if (response_data.mtc_debug) {
+          if (response_data.mtc_debug->device_serial.has_value()) {
+            const auto& ctap_request =
+                std::get<device::CtapMakeCredentialRequest>(
+                    req_state_->ctap_request);
+            const bool enterprise_requested =
+                ctap_request.attestation_preference ==
+                    device::AttestationConveyancePreference::
+                        kEnterpriseIfRPListedOnAuthenticator ||
+                ctap_request.attestation_preference ==
+                    device::AttestationConveyancePreference::
+                        kEnterpriseApprovedByBrowser;
+            if (!enterprise_requested) {
+              FIDO_LOG(ERROR)
+                  << "deviceSerial returned in mtc-debug, but Enterprise "
+                     "Attestation (EP 1 or 2) was not requested";
+              return nullptr;
+            }
+          }
+          response->mtc_debug = blink::mojom::MtcDebugResponse::New();
+          response->mtc_debug->pub_key =
+              std::move(response_data.mtc_debug->pub_key);
+          response->mtc_debug->device_serial =
+              std::move(response_data.mtc_debug->device_serial);
+          if (response_data.mtc_debug->not_before) {
+            response->mtc_debug->has_not_before = true;
+            response->mtc_debug->not_before =
+                *response_data.mtc_debug->not_before;
+          }
+          if (response_data.mtc_debug->not_after) {
+            response->mtc_debug->has_not_after = true;
+            response->mtc_debug->not_after =
+                *response_data.mtc_debug->not_after;
+          }
+          if (response_data.mtc_debug->firmware_version) {
+            response->mtc_debug->has_firmware_version = true;
+            response->mtc_debug->firmware_version =
+                *response_data.mtc_debug->firmware_version;
+          }
+          response->mtc_debug->mtc_proof =
+              std::move(response_data.mtc_debug->mtc_proof);
+          response->mtc_debug->root_hash =
+              std::move(response_data.mtc_debug->root_hash);
+        }
+        break;
       case RequestExtension::kHMACSecret:
         response->echo_hmac_create_secret = true;
         response->hmac_create_secret = did_create_hmac_secret;
@@ -3410,6 +3466,7 @@ AuthenticatorCommonImpl::CreateGetAssertionResponse(
       case RequestExtension::kLargeBlobEnable:
       case RequestExtension::kCredBlob:
       case RequestExtension::kMinPINLength:
+      case RequestExtension::kMtcDebug:
         NOTREACHED();
     }
   }

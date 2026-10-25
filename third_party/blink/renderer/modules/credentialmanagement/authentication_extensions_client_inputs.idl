@@ -61,5 +61,9 @@ dictionary AuthenticationExtensionsClientInputs {
   // Cross-device fallback URL support.
   // https://github.com/w3c/webauthn/pull/2380
   [RuntimeEnabled=WebAuthenticationCrossDeviceFallbackUrl] USVString crossDeviceFallbackUrl;
+
+  // MTC Debug extension support.
+  // https://w3c.github.io/webauthn/#sctn-mtc-debug-extension
+  [RuntimeEnabled=WebAuthenticationMtcDebug] boolean mtcDebug;
 };
 // LINT.ThenChange(//third_party/blink/renderer/modules/credentialmanagement/public_key_credential.cc)

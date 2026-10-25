@@ -24,6 +24,7 @@
 #include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_cmtg_key_outputs.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_large_blob_inputs.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_large_blob_outputs.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_mtc_debug_extension_output.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_payment_browser_bound_signature.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_payment_inputs.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_payment_outputs.h"
@@ -319,6 +320,36 @@ TypeConverter<blink::AuthenticationExtensionsCmtgKeyOutputs*,
   cmtg_key_output->setSignature(
       blink::DOMArrayBuffer::Create(cmtg_key->signature));
   return cmtg_key_output;
+}
+
+// static
+blink::MtcDebugExtensionOutput*
+TypeConverter<blink::MtcDebugExtensionOutput*,
+              blink::mojom::blink::MtcDebugResponsePtr>::
+    Convert(const blink::mojom::blink::MtcDebugResponsePtr& mtc_debug) {
+  auto* mtc_output = blink::MtcDebugExtensionOutput::Create();
+  mtc_output->setPubKey(blink::DOMArrayBuffer::Create(mtc_debug->pub_key));
+  if (!mtc_debug->device_serial.IsNull()) {
+    mtc_output->setDeviceSerial(mtc_debug->device_serial);
+  }
+  if (mtc_debug->has_not_before) {
+    mtc_output->setNotBefore(mtc_debug->not_before);
+  }
+  if (mtc_debug->has_not_after) {
+    mtc_output->setNotAfter(mtc_debug->not_after);
+  }
+  if (mtc_debug->has_firmware_version) {
+    mtc_output->setFirmwareVersion(mtc_debug->firmware_version);
+  }
+  if (mtc_debug->mtc_proof) {
+    mtc_output->setMtcProof(
+        blink::DOMArrayBuffer::Create(*mtc_debug->mtc_proof));
+  }
+  if (mtc_debug->root_hash) {
+    mtc_output->setRootHash(
+        blink::DOMArrayBuffer::Create(*mtc_debug->root_hash));
+  }
+  return mtc_output;
 }
 
 // static
@@ -769,6 +800,9 @@ TypeConverter<PublicKeyCredentialCreationOptionsPtr,
     }
     if (extensions->hasCmtgKey()) {
       mojo_options->cmtg_key = extensions->cmtgKey();
+    }
+    if (extensions->hasMtcDebug()) {
+      mojo_options->mtc_debug = extensions->mtcDebug();
     }
   }
 

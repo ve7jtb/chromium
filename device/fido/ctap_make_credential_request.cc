@@ -379,6 +379,10 @@ AsCTAPRequestValuePair(const CtapMakeCredentialRequest& request) {
     extensions.emplace(kExtensionMinPINLength, true);
   }
 
+  if (request.mtc_debug) {
+    extensions.emplace(kExtensionMtcDebug, true);
+  }
+
   if (!extensions.empty()) {
     cbor_map.emplace(6, std::move(extensions));
   }

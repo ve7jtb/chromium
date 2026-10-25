@@ -42,4 +42,8 @@ dictionary AuthenticationExtensionsClientOutputs {
   // RemoteClientDataJSON extension for remote desktop clients.
   // https://w3c.github.io/webauthn/#sctn-remote-client-data-json-extension
   [RuntimeEnabled=WebAuthenticationRemoteClientDataJson] boolean remoteClientDataJSON;
+
+  // MTC Debug extension output.
+  // https://w3c.github.io/webauthn/#sctn-mtc-debug-extension
+  [RuntimeEnabled=WebAuthenticationMtcDebug] MtcDebugExtensionOutput mtcDebug;
 };

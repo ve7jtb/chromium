@@ -37,4 +37,5 @@ dictionary AuthenticationExtensionsClientInputsJSON {
   AuthenticationExtensionsPRFInputsJSON prf;
   [RuntimeEnabled=WebAuthenticationCmtgKey] boolean cmtgKey;
   [RuntimeEnabled=WebAuthenticationCrossDeviceFallbackUrl] USVString crossDeviceFallbackUrl;
+  [RuntimeEnabled=WebAuthenticationMtcDebug] boolean mtcDebug;
 };

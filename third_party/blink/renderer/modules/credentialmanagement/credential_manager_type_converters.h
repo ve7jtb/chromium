@@ -37,6 +37,7 @@ class IdentityProviderConfig;
 class IdentityProviderRequestOptions;
 class LoginStatusOptions;
 class IdentityUserInfo;
+class MtcDebugExtensionOutput;
 class PublicKeyCredentialCreationOptions;
 class PublicKeyCredentialDescriptor;
 class PublicKeyCredentialParameters;
@@ -92,6 +93,13 @@ struct TypeConverter<blink::AuthenticationExtensionsCmtgKeyOutputs*,
                      blink::mojom::blink::CmtgKeyResponsePtr> {
   static blink::AuthenticationExtensionsCmtgKeyOutputs* Convert(
       const blink::mojom::blink::CmtgKeyResponsePtr&);
+};
+
+template <>
+struct TypeConverter<blink::MtcDebugExtensionOutput*,
+                     blink::mojom::blink::MtcDebugResponsePtr> {
+  static blink::MtcDebugExtensionOutput* Convert(
+      const blink::mojom::blink::MtcDebugResponsePtr&);
 };
 
 // blink::mojom::blink::Authenticator ---------------------------------------
