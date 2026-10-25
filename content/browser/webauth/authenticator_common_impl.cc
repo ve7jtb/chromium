@@ -142,6 +142,7 @@ enum class RequestExtension {
   kMinPINLength,
   kCrossDeviceFallbackUrl,
   kCmtgKey,
+  kMtcDebug,
   kRemoteClientDataJSON,
 };
 
@@ -1501,6 +1502,10 @@ void AuthenticatorCommonImpl::ContinueMakeCredentialAfterRpIdCheck(
   if (options->cmtg_key) {
     req_state_->requested_extensions.insert(RequestExtension::kCmtgKey);
     ctap_make_credential_request->cmtg_key = true;
+  }
+  if (options->mtc_debug) {
+    req_state_->requested_extensions.insert(RequestExtension::kMtcDebug);
+    ctap_make_credential_request->mtc_debug = true;
   }
   make_credential_options->large_blob_support = options->large_blob_enable;
   ctap_make_credential_request->app_id_exclude = std::move(appid_exclude);
@@ -3214,6 +3219,34 @@ AuthenticatorCommonImpl::CreateMakeCredentialResponse(
           response->cmtg_key->cmtg_key = std::move(response_data.cmtg_key->key);
           response->cmtg_key->signature =
               std::move(response_data.cmtg_key->signature);
+        }
+        break;
+      case RequestExtension::kMtcDebug:
+        if (response_data.mtc_debug) {
+          response->mtc_debug = blink::mojom::MtcDebugResponse::New();
+          response->mtc_debug->pub_key =
+              std::move(response_data.mtc_debug->pub_key);
+          response->mtc_debug->device_serial =
+              std::move(response_data.mtc_debug->device_serial);
+          if (response_data.mtc_debug->not_before) {
+            response->mtc_debug->has_not_before = true;
+            response->mtc_debug->not_before =
+                *response_data.mtc_debug->not_before;
+          }
+          if (response_data.mtc_debug->not_after) {
+            response->mtc_debug->has_not_after = true;
+            response->mtc_debug->not_after =
+                *response_data.mtc_debug->not_after;
+          }
+          if (response_data.mtc_debug->firmware_version) {
+            response->mtc_debug->has_firmware_version = true;
+            response->mtc_debug->firmware_version =
+                *response_data.mtc_debug->firmware_version;
+          }
+          response->mtc_debug->mtc_proof =
+              std::move(response_data.mtc_debug->mtc_proof);
+          response->mtc_debug->root_hash =
+              std::move(response_data.mtc_debug->root_hash);
         }
         break;
       case RequestExtension::kHMACSecret:

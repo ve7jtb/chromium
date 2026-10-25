@@ -91,6 +91,9 @@ void OnGetClientCapabilitiesComplete(
       "extension:crossDeviceFallbackUrl",
       RuntimeEnabledFeatures::WebAuthenticationCrossDeviceFallbackUrlEnabled(
           resolver->GetExecutionContext()));
+  results.emplace_back(
+      "extension:mtcDebug",
+      RuntimeEnabledFeatures::WebAuthenticationMtcDebugEnabled());
   if (RuntimeEnabledFeatures::WebAuthenticationRemoteClientDataJsonEnabled(
           resolver->GetExecutionContext())) {
     results.emplace_back("extension:remoteClientDataJSON", true);

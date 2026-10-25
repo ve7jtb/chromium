@@ -236,6 +236,7 @@ const char kExtensionPRFFirst[] = "first";
 const char kExtensionPRFResults[] = "results";
 const char kExtensionPRFSecond[] = "second";
 const char kExtensionCmtgKey[] = "cmtgKey";
+const char kExtensionMtcDebug[] = "mtc-debug";
 
 const char kExtensionLargeBlobBlob[] = "blob";
 const char kExtensionLargeBlobOriginalSize[] = "originalSize";

@@ -7402,6 +7402,11 @@
       base_feature: "none",
       public: true,
     },
+    // https://w3c.github.io/webauthn/#sctn-mtc-debug-extension
+    {
+      name: "WebAuthenticationMtcDebug",
+      status: "experimental",
+    },
     // Lets an authorized remote desktop client supply the clientDataJSON for a
     // WebAuthn request. Can be enabled only in conjunction with
     // the device::kWebAuthnRemoteClientDataJson base::Feature.
