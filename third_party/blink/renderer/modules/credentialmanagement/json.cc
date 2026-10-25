@@ -18,6 +18,8 @@
 #include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_large_blob_inputs.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_large_blob_inputs_js_on.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_large_blob_outputs.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_mtc_debug_extension_output.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_mtc_debug_extension_output_js_on.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_prf_inputs.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_prf_inputs_js_on.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_prf_outputs.h"
@@ -326,6 +328,32 @@ AuthenticationExtensionsClientOutputsToJSON(
   }
   if (in.hasRemoteClientDataJSON()) {
     json->setRemoteClientDataJSON(in.remoteClientDataJSON());
+  }
+  if (in.hasMtcDebug()) {
+    auto* mtc_debug_json = MtcDebugExtensionOutputJSON::Create();
+    mtc_debug_json->setPubKey(
+        WebAuthnBase64UrlEncode(in.mtcDebug()->pubKey()->ByteSpan()));
+    if (in.mtcDebug()->hasDeviceSerial()) {
+      mtc_debug_json->setDeviceSerial(in.mtcDebug()->deviceSerial());
+    }
+    if (in.mtcDebug()->hasNotBefore()) {
+      mtc_debug_json->setNotBefore(in.mtcDebug()->notBefore());
+    }
+    if (in.mtcDebug()->hasNotAfter()) {
+      mtc_debug_json->setNotAfter(in.mtcDebug()->notAfter());
+    }
+    if (in.mtcDebug()->hasFirmwareVersion()) {
+      mtc_debug_json->setFirmwareVersion(in.mtcDebug()->firmwareVersion());
+    }
+    if (in.mtcDebug()->hasMtcProof()) {
+      mtc_debug_json->setMtcProof(
+          WebAuthnBase64UrlEncode(in.mtcDebug()->mtcProof()->ByteSpan()));
+    }
+    if (in.mtcDebug()->hasRootHash()) {
+      mtc_debug_json->setRootHash(
+          WebAuthnBase64UrlEncode(in.mtcDebug()->rootHash()->ByteSpan()));
+    }
+    json->setMtcDebug(mtc_debug_json);
   }
   return json;
 }

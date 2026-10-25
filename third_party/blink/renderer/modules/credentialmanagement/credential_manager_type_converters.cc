@@ -24,6 +24,7 @@
 #include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_cmtg_key_outputs.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_large_blob_inputs.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_large_blob_outputs.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_mtc_debug_extension_output.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_payment_browser_bound_signature.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_payment_inputs.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_payment_outputs.h"
@@ -284,6 +285,33 @@ TypeConverter<blink::AuthenticationExtensionsClientOutputs*,
   if (extensions->cross_device_fallback_url.has_value()) {
     extension_outputs->setCrossDeviceFallbackUrl(
         *extensions->cross_device_fallback_url);
+  }
+  if (extensions->mtc_debug) {
+    auto* mtc_output = blink::MtcDebugExtensionOutput::Create();
+    mtc_output->setPubKey(
+        blink::DOMArrayBuffer::Create(extensions->mtc_debug->pub_key));
+    if (extensions->mtc_debug->device_serial) {
+      mtc_output->setDeviceSerial(
+          String::FromUTF8(*extensions->mtc_debug->device_serial));
+    }
+    if (extensions->mtc_debug->has_not_before) {
+      mtc_output->setNotBefore(extensions->mtc_debug->not_before);
+    }
+    if (extensions->mtc_debug->has_not_after) {
+      mtc_output->setNotAfter(extensions->mtc_debug->not_after);
+    }
+    if (extensions->mtc_debug->has_firmware_version) {
+      mtc_output->setFirmwareVersion(extensions->mtc_debug->firmware_version);
+    }
+    if (extensions->mtc_debug->mtc_proof) {
+      mtc_output->setMtcProof(
+          blink::DOMArrayBuffer::Create(*extensions->mtc_debug->mtc_proof));
+    }
+    if (extensions->mtc_debug->root_hash) {
+      mtc_output->setRootHash(
+          blink::DOMArrayBuffer::Create(*extensions->mtc_debug->root_hash));
+    }
+    extension_outputs->setMtcDebug(mtc_output);
   }
   return extension_outputs;
 }
@@ -769,6 +797,9 @@ TypeConverter<PublicKeyCredentialCreationOptionsPtr,
     }
     if (extensions->hasCmtgKey()) {
       mojo_options->cmtg_key = extensions->cmtgKey();
+    }
+    if (extensions->hasMtcDebug()) {
+      mojo_options->mtc_debug = extensions->mtcDebug();
     }
   }
 

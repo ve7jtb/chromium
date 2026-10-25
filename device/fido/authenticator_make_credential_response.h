@@ -16,6 +16,7 @@
 #include "base/containers/span.h"
 #include "device/fido/attestation_object.h"
 #include "device/fido/cmtg_key_response.h"
+#include "device/fido/mtc_debug_response.h"
 #include "device/fido/public/fido_constants.h"
 #include "device/fido/public/fido_transport_protocol.h"
 
@@ -97,6 +98,10 @@ class COMPONENT_EXPORT(DEVICE_FIDO) AuthenticatorMakeCredentialResponse {
   // `cmtg_key` is present if the client requested a CMTG key and the
   // authenticator supported it.
   std::optional<CmtgKeyResponse> cmtg_key;
+
+  // `mtc_debug` is present if the client requested MTC diagnostic data and the
+  // authenticator included it in authenticatorData.extensions.
+  std::optional<MtcDebugResponse> mtc_debug;
 };
 
 // Through cbor::Writer, produces a CTAP style CBOR-encoded byte array

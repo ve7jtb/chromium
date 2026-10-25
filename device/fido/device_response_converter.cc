@@ -25,6 +25,7 @@
 #include "device/fido/authenticator_supported_options.h"
 #include "device/fido/cbor_util.h"
 #include "device/fido/cmtg_key_response.h"
+#include "device/fido/mtc_debug_response.h"
 #include "device/fido/opaque_attestation_statement.h"
 #include "device/fido/public/features.h"
 #include "device/fido/public/fido_constants.h"
@@ -53,6 +54,46 @@ std::optional<CmtgKeyResponse> ParseCmtgKeyResponse(
   }
   return CmtgKeyResponse(public_key_it->second.GetBytestring(),
                          signature_value.GetBytestring());
+}
+
+std::optional<MtcDebugResponse> ParseMtcDebugResponse(
+    const cbor::Value& debug_value) {
+  if (!debug_value.is_map()) {
+    return std::nullopt;
+  }
+  const auto& debug_map = debug_value.GetMap();
+  auto pub_key_it = debug_map.find(cbor::Value("pubKey"));
+  if (pub_key_it == debug_map.end() || !pub_key_it->second.is_bytestring()) {
+    return std::nullopt;
+  }
+  MtcDebugResponse response(pub_key_it->second.GetBytestring());
+
+  auto serial_it = debug_map.find(cbor::Value("deviceSerial"));
+  if (serial_it != debug_map.end() && serial_it->second.is_string()) {
+    response.device_serial = serial_it->second.GetString();
+  }
+  auto nb_it = debug_map.find(cbor::Value("notBefore"));
+  if (nb_it != debug_map.end() && nb_it->second.is_unsigned()) {
+    response.not_before = nb_it->second.GetUnsigned();
+  }
+  auto na_it = debug_map.find(cbor::Value("notAfter"));
+  if (na_it != debug_map.end() && na_it->second.is_unsigned()) {
+    response.not_after = na_it->second.GetUnsigned();
+  }
+  auto fw_it = debug_map.find(cbor::Value("firmwareVersion"));
+  if (fw_it != debug_map.end() && fw_it->second.is_unsigned()) {
+    response.firmware_version =
+        base::checked_cast<uint32_t>(fw_it->second.GetUnsigned());
+  }
+  auto proof_it = debug_map.find(cbor::Value("mtcProof"));
+  if (proof_it != debug_map.end() && proof_it->second.is_bytestring()) {
+    response.mtc_proof = proof_it->second.GetBytestring();
+  }
+  auto root_it = debug_map.find(cbor::Value("rootHash"));
+  if (root_it != debug_map.end() && root_it->second.is_bytestring()) {
+    response.root_hash = root_it->second.GetBytestring();
+  }
+  return response;
 }
 
 ProtocolVersion ConvertStringToProtocolVersion(std::string_view version) {
@@ -224,6 +265,20 @@ ReadCTAPMakeCredentialResponse(FidoTransportProtocol transport_used,
         if (!response.cmtg_key) {
           return std::nullopt;
         }
+      } else if (extension_name == device::kExtensionMtcDebug) {
+        response.mtc_debug = ParseMtcDebugResponse(map_it.second);
+      }
+    }
+  }
+
+  if (!response.mtc_debug) {
+    const auto& auth_extensions =
+        response.attestation_object.authenticator_data().extensions();
+    if (auth_extensions && auth_extensions->is_map()) {
+      const auto& ext_map = auth_extensions->GetMap();
+      auto mtc_it = ext_map.find(cbor::Value(device::kExtensionMtcDebug));
+      if (mtc_it != ext_map.end()) {
+        response.mtc_debug = ParseMtcDebugResponse(mtc_it->second);
       }
     }
   }

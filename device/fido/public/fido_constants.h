@@ -504,6 +504,7 @@ COMPONENT_EXPORT(FIDO_PUBLIC) extern const char kExtensionPRFFirst[];
 COMPONENT_EXPORT(FIDO_PUBLIC) extern const char kExtensionPRFResults[];
 COMPONENT_EXPORT(FIDO_PUBLIC) extern const char kExtensionPRFSecond[];
 COMPONENT_EXPORT(FIDO_PUBLIC) extern const char kExtensionCmtgKey[];
+COMPONENT_EXPORT(FIDO_PUBLIC) extern const char kExtensionMtcDebug[];
 
 // Constants for the largeBlob extension
 COMPONENT_EXPORT(FIDO_PUBLIC) extern const char kExtensionLargeBlobBlob[];
