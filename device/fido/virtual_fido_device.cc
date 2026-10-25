@@ -13,6 +13,7 @@
 #include "base/containers/to_vector.h"
 #include "base/logging.h"
 #include "base/memory/ptr_util.h"
+#include "base/no_destructor.h"
 #include "base/notreached.h"
 #include "base/rand_util.h"
 #include "base/strings/string_number_conversions.h"
@@ -414,16 +415,37 @@ std::string VirtualFidoDevice::GetId() const {
 }
 
 // static
-std::vector<uint8_t> VirtualFidoDevice::GetAttestationKey() {
-  return base::ToVector(kAttestationKey);
+std::vector<uint8_t> VirtualFidoDevice::GetAttestationKey(
+    CoseAlgorithmIdentifier algorithm) {
+  switch (algorithm) {
+    case CoseAlgorithmIdentifier::kMlDsa44: {
+      static const base::NoDestructor<std::vector<uint8_t>> kMlDsa44Key(
+          crypto::keypair::PrivateKey::GenerateMldsa44().ToPrivateKeyInfo());
+      return *kMlDsa44Key;
+    }
+    case CoseAlgorithmIdentifier::kMlDsa65: {
+      static const base::NoDestructor<std::vector<uint8_t>> kMlDsa65Key(
+          crypto::keypair::PrivateKey::GenerateMldsa65().ToPrivateKeyInfo());
+      return *kMlDsa65Key;
+    }
+    case CoseAlgorithmIdentifier::kMlDsa87: {
+      static const base::NoDestructor<std::vector<uint8_t>> kMlDsa87Key(
+          crypto::keypair::PrivateKey::GenerateMldsa87().ToPrivateKeyInfo());
+      return *kMlDsa87Key;
+    }
+    case CoseAlgorithmIdentifier::kEs256:
+    default:
+      return base::ToVector(kAttestationKey);
+  }
 }
 
 std::optional<std::vector<uint8_t>>
 VirtualFidoDevice::GenerateAttestationCertificate(
     bool individual_attestation_requested,
-    bool include_transports) const {
+    bool include_transports,
+    CoseAlgorithmIdentifier algorithm) const {
   auto attestation_private_key =
-      crypto::keypair::PrivateKey::FromPrivateKeyInfo(GetAttestationKey());
+      crypto::keypair::PrivateKey::FromPrivateKeyInfo(GetAttestationKey(algorithm));
   constexpr uint32_t kAttestationCertSerialNumber = 1;
 
   // https://fidoalliance.org/specs/fido-u2f-v1.2-ps-20170411/fido-u2f-authenticator-transports-extension-v1.2-ps-20170411.html#fido-u2f-certificate-transports-extension

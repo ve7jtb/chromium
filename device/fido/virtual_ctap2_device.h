@@ -194,7 +194,15 @@ class COMPONENT_EXPORT(DEVICE_FIDO) VirtualCtap2Device
     // enabled.
     std::vector<device::CoseAlgorithmIdentifier> advertised_algorithms = {
         device::CoseAlgorithmIdentifier::kEs256,
+        device::CoseAlgorithmIdentifier::kMlDsa44,
+        device::CoseAlgorithmIdentifier::kMlDsa65,
+        device::CoseAlgorithmIdentifier::kMlDsa87,
     };
+
+    // batch_attestation_algorithm specifies the algorithm used for batch
+    // attestation. If nullopt, the authenticator selects an attestation
+    // key matching the credential's algorithm if supported (or ES256).
+    std::optional<device::CoseAlgorithmIdentifier> batch_attestation_algorithm;
 
     // support_enterprise_attestation indicates whether enterprise attestation
     // support will be advertised in the getInfo response and whether requests

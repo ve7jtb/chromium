@@ -235,6 +235,66 @@ TEST_F(VirtualCtap2DeviceTest, AttestationCertificateIsValid) {
   EXPECT_EQ(std::string_view("\x30\x00", 2), contents);
 }
 
+// Tests that batch attestation with Post-Quantum algorithms (-48, -49, -50)
+// works and returns valid self-signed batch certificates.
+TEST_F(VirtualCtap2DeviceTest, PostQuantumBatchAttestationIsValid) {
+  for (int32_t alg : {-48, -49, -50}) {
+    SCOPED_TRACE(alg);
+    scoped_refptr<VirtualFidoDevice::State> state =
+        base::MakeRefCounted<VirtualFidoDevice::State>();
+    VirtualCtap2Device::Config config;
+    MakeDevice(state, config);
+
+    PublicKeyCredentialRpEntity rp("acme.com");
+    PublicKeyCredentialUserEntity user(base::ToVector(test_data::kUserId));
+    CtapMakeCredentialRequest request(
+        test_data::kClientDataJson, std::move(rp), std::move(user),
+        PublicKeyCredentialParams({{CredentialType::kPublicKey, alg}}));
+
+    TestFuture future;
+    SendCommand(device_.get(), ToCTAP2Command(AsCTAPRequestValuePair(request)),
+                future.GetCallback());
+    EXPECT_TRUE(future.Wait());
+
+    std::optional<cbor::Value> cbor = DecodeCBOR(future.Take().value());
+    ASSERT_TRUE(cbor);
+    std::optional<AuthenticatorMakeCredentialResponse> response =
+        ReadCTAPMakeCredentialResponse(
+            FidoTransportProtocol::kUsbHumanInterfaceDevice, std::move(cbor));
+    ASSERT_TRUE(response);
+
+    const AttestationStatement& attestation =
+        response->attestation_object.attestation_statement();
+
+    EXPECT_FALSE(attestation.IsSelfAttestation());
+    EXPECT_FALSE(
+        attestation.IsAttestationCertificateInappropriatelyIdentifying());
+
+    base::span<const uint8_t> cert_bytes = *attestation.GetLeafCertificate();
+    scoped_refptr<net::X509Certificate> cert =
+        net::X509Certificate::CreateFromBytes(cert_bytes);
+    ASSERT_TRUE(cert);
+
+    const auto& subject = cert->subject();
+    EXPECT_EQ("Batch Certificate", subject.common_name);
+    EXPECT_EQ("US", subject.country_name);
+    EXPECT_THAT(subject.organization_names, testing::ElementsAre("Chromium"));
+    EXPECT_THAT(subject.organization_unit_names,
+                testing::ElementsAre("Authenticator Attestation"));
+
+    base::Time now = base::Time::Now();
+    EXPECT_LT(cert->valid_start(), now);
+    EXPECT_GT(cert->valid_expiry(), now);
+
+    const cbor::Value& att_cbor = attestation.AsCBOR();
+    ASSERT_TRUE(att_cbor.is_map());
+    const auto& att_map = att_cbor.GetMap();
+    auto alg_it = att_map.find(cbor::Value("alg"));
+    ASSERT_TRUE(alg_it != att_map.end());
+    EXPECT_EQ(alg_it->second.GetInteger(), alg);
+  }
+}
+
 TEST_F(VirtualCtap2DeviceTest, RejectsCredentialsWithExtraKeys) {
   // The VirtualCtap2Device should reject assertion requests where a credential
   // contains extra keys. This is to ensure that we catch if we trigger

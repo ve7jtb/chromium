@@ -74,11 +74,10 @@ bool AddSignatureAlgorithm(CBB* cbb,
 bool AddSignatureAlgorithm(CBB* cbb,
                            const EVP_PKEY* pkey,
                            DigestAlgorithm digest_alg) {
-  if (digest_alg != DIGEST_SHA256) {
-    return false;
-  }
-
   if (EVP_PKEY_id(pkey) == EVP_PKEY_RSA) {
+    if (digest_alg != DIGEST_SHA256) {
+      return false;
+    }
     // See RFC 4055.
     static const uint8_t kSHA256WithRSAEncryption[] = {
         0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0b};
@@ -86,11 +85,29 @@ bool AddSignatureAlgorithm(CBB* cbb,
     return AddSignatureAlgorithm(cbb, kSHA256WithRSAEncryption,
                                  /*null_param=*/true);
   } else if (EVP_PKEY_id(pkey) == EVP_PKEY_EC) {
+    if (digest_alg != DIGEST_SHA256) {
+      return false;
+    }
     // 1.2.840.10045.4.3.2
     static const uint8_t kECDSAWithSHA256[] = {0x2a, 0x86, 0x48, 0xce,
                                                0x3d, 0x04, 0x03, 0x02};
     return AddSignatureAlgorithm(cbb, kECDSAWithSHA256,
                                  /*null_param=*/false);
+  } else if (EVP_PKEY_id(pkey) == EVP_PKEY_ML_DSA_44) {
+    // 2.16.840.1.101.3.4.3.17 (id-ml-dsa-44)
+    static const uint8_t kMlDsa44[] = {0x60, 0x86, 0x48, 0x01, 0x65,
+                                       0x03, 0x04, 0x03, 0x11};
+    return AddSignatureAlgorithm(cbb, kMlDsa44, /*null_param=*/false);
+  } else if (EVP_PKEY_id(pkey) == EVP_PKEY_ML_DSA_65) {
+    // 2.16.840.1.101.3.4.3.18 (id-ml-dsa-65)
+    static const uint8_t kMlDsa65[] = {0x60, 0x86, 0x48, 0x01, 0x65,
+                                       0x03, 0x04, 0x03, 0x12};
+    return AddSignatureAlgorithm(cbb, kMlDsa65, /*null_param=*/false);
+  } else if (EVP_PKEY_id(pkey) == EVP_PKEY_ML_DSA_87) {
+    // 2.16.840.1.101.3.4.3.19 (id-ml-dsa-87)
+    static const uint8_t kMlDsa87[] = {0x60, 0x86, 0x48, 0x01, 0x65,
+                                       0x03, 0x04, 0x03, 0x13};
+    return AddSignatureAlgorithm(cbb, kMlDsa87, /*null_param=*/false);
   }
   return false;
 }
@@ -406,13 +423,18 @@ bool CreateCert(EVP_PKEY* subject_key,
   size_t sig_len;
   uint8_t* cert_bytes;
   size_t cert_len;
+  const bool is_mldsa = EVP_PKEY_id(issuer_key) == EVP_PKEY_ML_DSA_44 ||
+                        EVP_PKEY_id(issuer_key) == EVP_PKEY_ML_DSA_65 ||
+                        EVP_PKEY_id(issuer_key) == EVP_PKEY_ML_DSA_87;
+  const EVP_MD* md = is_mldsa ? nullptr : ToEVP(digest_alg);
+
   if (!CBB_init(cbb.get(), tbs_cert_len) ||
       !CBB_add_asn1(cbb.get(), &cert, CBS_ASN1_SEQUENCE) ||
       !CBB_add_bytes(&cert, tbs_cert_bytes, tbs_cert_len) ||
       !AddSignatureAlgorithm(&cert, issuer_key, digest_alg) ||
       !CBB_add_asn1(&cert, &signature, CBS_ASN1_BITSTRING) ||
       !CBB_add_u8(&signature, 0 /* no unused bits */) ||
-      !EVP_DigestSignInit(ctx.get(), nullptr, ToEVP(digest_alg), nullptr,
+      !EVP_DigestSignInit(ctx.get(), nullptr, md, nullptr,
                           issuer_key) ||
       // Compute the maximum signature length.
       !EVP_DigestSign(ctx.get(), nullptr, &sig_len, tbs_cert_bytes,
