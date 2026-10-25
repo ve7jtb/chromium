@@ -1043,8 +1043,8 @@ TEST(PublicKeyCredentialTest, AuthenticationExtensionsClientOutputsToJSON) {
            MtcDebugValues{
                .pub_key = Vector<uint8_t>{'p', 'u', 'b', 'k', 'e', 'y'},
                .device_serial = String("TEST-SERIAL-1234"),
-               .not_before = 1776518400,
-               .not_after = 1784371200,
+               .not_before = 1767225600ULL,
+               .not_after = 253402300799ULL,
                .firmware_version = 332805,
                .mtc_proof = Vector<uint8_t>{'p', 'r', 'o', 'o', 'f'},
                .root_hash = Vector<uint8_t>{'r', 'o', 'o', 't', '3', '2'}}},
