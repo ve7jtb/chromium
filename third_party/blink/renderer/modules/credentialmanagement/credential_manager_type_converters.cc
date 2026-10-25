@@ -286,33 +286,6 @@ TypeConverter<blink::AuthenticationExtensionsClientOutputs*,
     extension_outputs->setCrossDeviceFallbackUrl(
         *extensions->cross_device_fallback_url);
   }
-  if (extensions->mtc_debug) {
-    auto* mtc_output = blink::MtcDebugExtensionOutput::Create();
-    mtc_output->setPubKey(
-        blink::DOMArrayBuffer::Create(extensions->mtc_debug->pub_key));
-    if (extensions->mtc_debug->device_serial) {
-      mtc_output->setDeviceSerial(
-          String::FromUTF8(*extensions->mtc_debug->device_serial));
-    }
-    if (extensions->mtc_debug->has_not_before) {
-      mtc_output->setNotBefore(extensions->mtc_debug->not_before);
-    }
-    if (extensions->mtc_debug->has_not_after) {
-      mtc_output->setNotAfter(extensions->mtc_debug->not_after);
-    }
-    if (extensions->mtc_debug->has_firmware_version) {
-      mtc_output->setFirmwareVersion(extensions->mtc_debug->firmware_version);
-    }
-    if (extensions->mtc_debug->mtc_proof) {
-      mtc_output->setMtcProof(
-          blink::DOMArrayBuffer::Create(*extensions->mtc_debug->mtc_proof));
-    }
-    if (extensions->mtc_debug->root_hash) {
-      mtc_output->setRootHash(
-          blink::DOMArrayBuffer::Create(*extensions->mtc_debug->root_hash));
-    }
-    extension_outputs->setMtcDebug(mtc_output);
-  }
   return extension_outputs;
 }
 
@@ -347,6 +320,36 @@ TypeConverter<blink::AuthenticationExtensionsCmtgKeyOutputs*,
   cmtg_key_output->setSignature(
       blink::DOMArrayBuffer::Create(cmtg_key->signature));
   return cmtg_key_output;
+}
+
+// static
+blink::MtcDebugExtensionOutput*
+TypeConverter<blink::MtcDebugExtensionOutput*,
+              blink::mojom::blink::MtcDebugResponsePtr>::
+    Convert(const blink::mojom::blink::MtcDebugResponsePtr& mtc_debug) {
+  auto* mtc_output = blink::MtcDebugExtensionOutput::Create();
+  mtc_output->setPubKey(blink::DOMArrayBuffer::Create(mtc_debug->pub_key));
+  if (!mtc_debug->device_serial.IsNull()) {
+    mtc_output->setDeviceSerial(mtc_debug->device_serial);
+  }
+  if (mtc_debug->has_not_before) {
+    mtc_output->setNotBefore(mtc_debug->not_before);
+  }
+  if (mtc_debug->has_not_after) {
+    mtc_output->setNotAfter(mtc_debug->not_after);
+  }
+  if (mtc_debug->has_firmware_version) {
+    mtc_output->setFirmwareVersion(mtc_debug->firmware_version);
+  }
+  if (mtc_debug->mtc_proof) {
+    mtc_output->setMtcProof(
+        blink::DOMArrayBuffer::Create(*mtc_debug->mtc_proof));
+  }
+  if (mtc_debug->root_hash) {
+    mtc_output->setRootHash(
+        blink::DOMArrayBuffer::Create(*mtc_debug->root_hash));
+  }
+  return mtc_output;
 }
 
 // static

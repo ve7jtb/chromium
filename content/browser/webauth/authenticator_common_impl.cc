@@ -2771,11 +2771,16 @@ void AuthenticatorCommonImpl::OnRegisterResponse(
     attestation_erasure = AttestationErasureOption::kIncludeAttestation;
   }
 
-  CompleteMakeCredentialRequest(
-      blink::mojom::AuthenticatorStatus::SUCCESS,
-      CreateMakeCredentialResponse(std::move(*response_data),
-                                   *attestation_erasure),
-      nullptr, Focus::kDoCheck);
+  auto response = CreateMakeCredentialResponse(std::move(*response_data),
+                                               *attestation_erasure);
+  if (!response) {
+    FIDO_LOG(ERROR) << "Failed to create make credential response";
+    CompleteMakeCredentialRequest(
+        blink::mojom::AuthenticatorStatus::NOT_ALLOWED_ERROR, nullptr, nullptr);
+    return;
+  }
+  CompleteMakeCredentialRequest(blink::mojom::AuthenticatorStatus::SUCCESS,
+                                std::move(response), nullptr, Focus::kDoCheck);
 }
 
 void AuthenticatorCommonImpl::OnSignResponse(
@@ -3223,6 +3228,24 @@ AuthenticatorCommonImpl::CreateMakeCredentialResponse(
         break;
       case RequestExtension::kMtcDebug:
         if (response_data.mtc_debug) {
+          if (response_data.mtc_debug->device_serial.has_value()) {
+            const auto& ctap_request =
+                std::get<device::CtapMakeCredentialRequest>(
+                    req_state_->ctap_request);
+            const bool enterprise_requested =
+                ctap_request.attestation_preference ==
+                    device::AttestationConveyancePreference::
+                        kEnterpriseIfRPListedOnAuthenticator ||
+                ctap_request.attestation_preference ==
+                    device::AttestationConveyancePreference::
+                        kEnterpriseApprovedByBrowser;
+            if (!enterprise_requested) {
+              FIDO_LOG(ERROR)
+                  << "deviceSerial returned in mtc-debug, but Enterprise "
+                     "Attestation (EP 1 or 2) was not requested";
+              return nullptr;
+            }
+          }
           response->mtc_debug = blink::mojom::MtcDebugResponse::New();
           response->mtc_debug->pub_key =
               std::move(response_data.mtc_debug->pub_key);
@@ -3443,6 +3466,7 @@ AuthenticatorCommonImpl::CreateGetAssertionResponse(
       case RequestExtension::kLargeBlobEnable:
       case RequestExtension::kCredBlob:
       case RequestExtension::kMinPINLength:
+      case RequestExtension::kMtcDebug:
         NOTREACHED();
     }
   }
