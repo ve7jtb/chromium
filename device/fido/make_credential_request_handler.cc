@@ -1155,6 +1155,11 @@ void MakeCredentialRequestHandler::SpecializeRequestForAuthenticator(
   if (request->cmtg_key && !authenticator->Options().supports_cmtg_key) {
     request->cmtg_key = false;
   }
+
+  if (!request->attestation_formats.empty() &&
+      !authenticator->Options().supports_attestation_formats) {
+    request->attestation_formats.clear();
+  }
 }
 
 }  // namespace device

@@ -34,7 +34,7 @@ bool AreMakeCredentialRequestMapKeysCorrect(
   return std::ranges::all_of(
       request_map, [](const auto& param) {
         return (param.first.is_integer() && 1u <= param.first.GetInteger() &&
-                param.first.GetInteger() <= 10u);
+                param.first.GetInteger() <= 11u);
       });
 }
 
@@ -126,6 +126,22 @@ std::optional<CtapMakeCredentialRequest> CtapMakeCredentialRequest::Parse(
       default:
         return std::nullopt;
     }
+  }
+
+  const auto attestation_formats_it = request_map.find(cbor::Value(11));
+  if (attestation_formats_it != request_map.end()) {
+    if (!attestation_formats_it->second.is_array() ||
+        attestation_formats_it->second.GetArray().empty()) {
+      return std::nullopt;
+    }
+    std::vector<std::string> attestation_formats;
+    for (const auto& fmt : attestation_formats_it->second.GetArray()) {
+      if (!fmt.is_string()) {
+        return std::nullopt;
+      }
+      attestation_formats.push_back(fmt.GetString());
+    }
+    request.attestation_formats = std::move(attestation_formats);
   }
 
   const auto extensions_it = request_map.find(cbor::Value(6));
@@ -425,6 +441,15 @@ AsCTAPRequestValuePair(const CtapMakeCredentialRequest& request) {
       break;
     default:
       break;
+  }
+
+  if (!request.attestation_formats.empty()) {
+    cbor::Value::ArrayValue formats_array;
+    formats_array.reserve(request.attestation_formats.size());
+    for (const auto& fmt : request.attestation_formats) {
+      formats_array.emplace_back(fmt);
+    }
+    cbor_map.emplace(11, std::move(formats_array));
   }
 
   return std::make_pair(CtapRequestCommand::kAuthenticatorMakeCredential,

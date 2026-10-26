@@ -192,9 +192,26 @@ std::vector<uint8_t> ConstructMakeCredentialResponse(
     attestation_map.emplace("sig", base::ToVector(signature));
 
     if (attestation_format == "mtc") {
+      int64_t serial = 1;
+      switch (attestation_algorithm) {
+        case CoseAlgorithmIdentifier::kMlDsa44:
+          serial = 1;
+          break;
+        case CoseAlgorithmIdentifier::kMlDsa65:
+          serial = 2;
+          break;
+        case CoseAlgorithmIdentifier::kMlDsa87:
+          serial = 3;
+          break;
+        case CoseAlgorithmIdentifier::kEs256:
+          serial = 4;
+          break;
+        default:
+          break;
+      }
       cbor::Value::MapValue mtc_cert_map;
       mtc_cert_map.emplace("caId", base::ToVector(kDeviceAaguid));
-      mtc_cert_map.emplace("serial", 1);
+      mtc_cert_map.emplace("serial", serial);
       mtc_cert_map.emplace("notBefore", 0);
       mtc_cert_map.emplace("notAfter", static_cast<int64_t>(253402300799ULL));
       mtc_cert_map.emplace("firmwareVersion", 1);
@@ -205,6 +222,9 @@ std::vector<uint8_t> ConstructMakeCredentialResponse(
 
       attestation_statement = std::make_unique<OpaqueAttestationStatement>(
           "mtc", cbor::Value(std::move(attestation_map)));
+    } else if (attestation_format == "none") {
+      attestation_statement = std::make_unique<OpaqueAttestationStatement>(
+          "none", cbor::Value(cbor::Value::MapValue()));
     } else {
       if (attestation_certificate) {
         cbor::Value::ArrayValue certificate_chain;
@@ -743,6 +763,12 @@ VirtualCtap2Device::VirtualCtap2Device(scoped_refptr<State> state,
 
   if (!extensions.empty()) {
     device_info_->extensions.emplace(std::move(extensions));
+  }
+
+  if (!config.none_attestation) {
+    device_info_->attestation_formats =
+        std::vector<std::string>{"mtc", "packed"};
+    device_info_->options.supports_attestation_formats = true;
   }
 
   if (config.max_credential_count_in_list > 0) {
@@ -1588,11 +1614,25 @@ std::optional<CtapDeviceResponseCode> VirtualCtap2Device::OnMakeCredential(
     base::Extend(*mtc_debug_response->mtc_proof, test_root_hash);
   }
 
+  std::string effective_attestation_format = config_.attestation_format;
+  if (!config_.none_attestation && !request.attestation_formats.empty()) {
+    for (const auto& fmt : request.attestation_formats) {
+      if (fmt == "mtc" || fmt == "packed") {
+        effective_attestation_format = fmt;
+        break;
+      }
+      if (fmt == "none" && !enterprise_attestation_requested) {
+        effective_attestation_format = "none";
+        break;
+      }
+    }
+  }
+
   *response = ConstructMakeCredentialResponse(
       std::move(attestation_cert), sig, std::move(authenticator_data),
       enterprise_attestation_requested, supports_large_blob, prf_enabled,
       std::move(prf_results), std::move(cmtg_key_response), attestation_alg,
-      std::move(mtc_debug_response), config_.attestation_format);
+      std::move(mtc_debug_response), effective_attestation_format);
   return CtapDeviceResponseCode::kSuccess;
 }
 

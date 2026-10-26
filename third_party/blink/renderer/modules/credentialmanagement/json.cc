@@ -401,6 +401,9 @@ PublicKeyCredentialCreationOptions* PublicKeyCredentialCreationOptionsFromJSON(
   if (json->hasAttestation()) {
     result->setAttestation(json->attestation());
   }
+  if (json->hasAttestationFormats()) {
+    result->setAttestationFormats(json->attestationFormats());
+  }
   if (json->hasExtensions()) {
     auto* extensions = AuthenticationExtensionsClientInputsFromJSON(
         *json->extensions(), exception_state);

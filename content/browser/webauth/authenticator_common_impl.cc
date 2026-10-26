@@ -1527,6 +1527,11 @@ void AuthenticatorCommonImpl::ContinueMakeCredentialAfterRpIdCheck(
         device::AttestationConveyancePreference::kEnterpriseApprovedByBrowser;
   }
   ctap_make_credential_request->attestation_preference = attestation;
+  if (attestation != device::AttestationConveyancePreference::kNone &&
+      !options->attestation_formats.empty()) {
+    ctap_make_credential_request->attestation_formats =
+        options->attestation_formats;
+  }
   GetWebAuthenticationDelegate()->BrowserProvidedPasskeysAvailable(
       GetBrowserContext(),
       base::BindOnce(
