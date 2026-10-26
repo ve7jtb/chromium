@@ -901,6 +901,22 @@ std::optional<AuthenticatorGetInfoResponse> ReadCTAPGetInfoResponse(
         base::saturated_cast<uint32_t>(it->second.GetUnsigned());
   }
 
+  it = response_map.find(CBOR(0x16));
+  if (it != response_map.end()) {
+    if (!it->second.is_array() || it->second.GetArray().empty()) {
+      return std::nullopt;
+    }
+    std::vector<std::string> attestation_formats;
+    for (const auto& fmt : it->second.GetArray()) {
+      if (!fmt.is_string()) {
+        return std::nullopt;
+      }
+      attestation_formats.push_back(fmt.GetString());
+    }
+    response.attestation_formats = std::move(attestation_formats);
+    response.options.supports_attestation_formats = true;
+  }
+
   return std::optional<AuthenticatorGetInfoResponse>(std::move(response));
 }
 

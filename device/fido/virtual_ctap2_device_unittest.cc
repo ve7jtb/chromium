@@ -447,6 +447,28 @@ TEST_F(VirtualCtap2DeviceTest, PostQuantumMtcAttestationFormats) {
 
   // In fmt: "mtc", pubKey is omitted from attStmt on the wire!
   EXPECT_FALSE(att_map.contains(cbor::Value("pubKey")));
+
+  // Also verify CTAP 2.2/2.3 parameter 0x0B (attestationFormatsPreference)
+  // dynamically selects "mtc" even when Config::attestation_format defaults to
+  // "packed".
+  VirtualCtap2Device::Config default_config;
+  MakeDevice(state, default_config);
+  request.attestation_formats = {"mtc", "packed"};
+
+  TestFuture future_pref;
+  SendCommand(device_.get(), ToCTAP2Command(AsCTAPRequestValuePair(request)),
+              future_pref.GetCallback());
+  EXPECT_TRUE(future_pref.Wait());
+  std::optional<cbor::Value> cbor_pref = DecodeCBOR(future_pref.Take().value());
+  ASSERT_TRUE(cbor_pref);
+  std::optional<AuthenticatorMakeCredentialResponse> response_pref =
+      ReadCTAPMakeCredentialResponse(
+          FidoTransportProtocol::kUsbHumanInterfaceDevice,
+          std::move(cbor_pref));
+  ASSERT_TRUE(response_pref);
+  EXPECT_EQ(
+      response_pref->attestation_object.attestation_statement().format_name(),
+      "mtc");
 }
 
 // Exports PQC batch certificates and FIDO MDS3 statements for test RP servers.

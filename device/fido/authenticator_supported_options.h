@@ -127,6 +127,10 @@ struct COMPONENT_EXPORT(DEVICE_FIDO) AuthenticatorSupportedOptions {
   bool supports_prf = false;
   // If true, indicates that the authenticator supports the cmtgKey extension.
   bool supports_cmtg_key = false;
+  // If true, indicates that the authenticator advertises supported
+  // attestationFormats (0x16) in authenticatorGetInfo and accepts
+  // attestationFormatsPreference (0x0B) in authenticatorMakeCredential.
+  bool supports_attestation_formats = false;
   // max_cred_blob_length is the longest credBlob value that this authenticator
   // can store. A value of `nullopt` indicates no support for credBlob.
   std::optional<uint16_t> max_cred_blob_length;
