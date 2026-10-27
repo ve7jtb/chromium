@@ -85,14 +85,20 @@ bool AddSignatureAlgorithm(CBB* cbb,
     return AddSignatureAlgorithm(cbb, kSHA256WithRSAEncryption,
                                  /*null_param=*/true);
   } else if (EVP_PKEY_id(pkey) == EVP_PKEY_EC) {
-    if (digest_alg != DIGEST_SHA256) {
-      return false;
+    if (digest_alg == DIGEST_SHA256) {
+      // 1.2.840.10045.4.3.2
+      static const uint8_t kECDSAWithSHA256[] = {0x2a, 0x86, 0x48, 0xce,
+                                                 0x3d, 0x04, 0x03, 0x02};
+      return AddSignatureAlgorithm(cbb, kECDSAWithSHA256,
+                                   /*null_param=*/false);
+    } else if (digest_alg == DIGEST_SHA384) {
+      // 1.2.840.10045.4.3.3
+      static const uint8_t kECDSAWithSHA384[] = {0x2a, 0x86, 0x48, 0xce,
+                                                 0x3d, 0x04, 0x03, 0x03};
+      return AddSignatureAlgorithm(cbb, kECDSAWithSHA384,
+                                   /*null_param=*/false);
     }
-    // 1.2.840.10045.4.3.2
-    static const uint8_t kECDSAWithSHA256[] = {0x2a, 0x86, 0x48, 0xce,
-                                               0x3d, 0x04, 0x03, 0x02};
-    return AddSignatureAlgorithm(cbb, kECDSAWithSHA256,
-                                 /*null_param=*/false);
+    return false;
   } else if (EVP_PKEY_id(pkey) == EVP_PKEY_ML_DSA_44) {
     // 2.16.840.1.101.3.4.3.17 (id-ml-dsa-44)
     static const uint8_t kMlDsa44[] = {0x60, 0x86, 0x48, 0x01, 0x65,
@@ -116,6 +122,8 @@ const EVP_MD* ToEVP(DigestAlgorithm alg) {
   switch (alg) {
     case DIGEST_SHA256:
       return EVP_sha256();
+    case DIGEST_SHA384:
+      return EVP_sha384();
   }
   return nullptr;
 }

@@ -547,7 +547,24 @@ TEST_F(VirtualCtap2DeviceTest, PostQuantumExportMdsAndCertificates) {
         pub_key_cbor);
   }
 
-  // 3. Output FIDO MDS3 MetadataStatement JSON
+  // 3. Output FIDO MDS3 MetadataStatement JSON (including the ES384 Root CA
+  // that signs the P-256 batch certificate).
+  static constexpr char kEs384RootCaB64[] =
+      "MIICaDCCAe6gAwIBAgIUOLB1Ka53ZiSF/HIGy6jAO3O9umswCgYIKoZIzj0EAwMw"
+      "cjEoMCYGA1UEAwwfRmlkb250IEVudGVycHJpc2UgUm9vdCBDQSBFUzM4NDEVMBMG"
+      "A1UECgwMSm9obiBCcmFkbGV5MSIwIAYDVQQLDBlBdXRoZW50aWNhdG9yIEF0dGVz"
+      "dGF0aW9uMQswCQYDVQQGEwJDQTAeFw0yNjEwMTgwNDExMjFaFw0zNjEwMTUwNDEx"
+      "MjFaMHIxKDAmBgNVBAMMH0ZpZG9udCBFbnRlcnByaXNlIFJvb3QgQ0EgRVMzODQx"
+      "FTATBgNVBAoMDEpvaG4gQnJhZGxleTEiMCAGA1UECwwZQXV0aGVudGljYXRvciBB"
+      "dHRlc3RhdGlvbjELMAkGA1UEBhMCQ0EwdjAQBgcqhkjOPQIBBgUrgQQAIgNiAATT"
+      "TxUOhMgwwtAGfaggYwIiG7G8Rx0shuAmo9sY5vultNRsQIKbw4eVkxjDXunqynKQ"
+      "5XJ6aR4SKWOuYlfYSaMukb4YY1Owyyly4rTY0SZm/pG1YExwajZk7UojgZ/5l1Wj"
+      "RTBDMBIGA1UdEwEB/wQIMAYBAf8CAQAwDgYDVR0PAQH/BAQDAgEGMB0GA1UdDgQW"
+      "BBTJjzOEuEouEv/qKEau50kepO1neDAKBggqhkjOPQQDAwNoADBlAjAy8VU/SA0N"
+      "ht0zhsIBg+dQ6DdIHGocXUMloHYgUcX/+C74eFjgKTBjnPx9PCh5coECMQDNa6vi"
+      "FEf4DeyzQc2qZF2l3+KKtocvkitocGtS79VPPS3X/Eb7UlGmH2osVRK2ydM=";
+  b64_certs.push_back(kEs384RootCaB64);
+
   std::string roots_json = "[\n";
   for (size_t i = 0; i < b64_certs.size(); ++i) {
     roots_json += "    \"" + b64_certs[i] + "\"" +
