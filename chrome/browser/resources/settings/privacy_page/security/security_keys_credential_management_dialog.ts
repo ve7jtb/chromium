@@ -346,14 +346,17 @@ export class SettingsSecurityKeysCredentialManagementDialogElement extends
     this.credentialIdToDelete_ = target.dataset['credentialid']!;
     assert(!this.isEmpty_(this.credentialIdToDelete_));
 
+    this.confirmButtonDisabled_ = false;
     this.confirmMsg_ =
         this.i18n('securityKeysCredentialManagementConfirmDeleteCredential');
     this.dialogPage_ = CredentialManagementDialogPage.CONFIRM;
   }
 
   private deleteCredential_() {
+    this.confirmButtonDisabled_ = true;
     this.browserProxy_.deleteCredentials([this.credentialIdToDelete_])
         .then((response) => {
+          this.confirmButtonDisabled_ = false;
           if (!response.success) {
             this.onError_(response.message);
             return;
@@ -361,6 +364,9 @@ export class SettingsSecurityKeysCredentialManagementDialogElement extends
           this.credentials_ = this.credentials_.filter(
               c => c.credentialId !== this.credentialIdToDelete_);
           this.dialogPage_ = CredentialManagementDialogPage.CREDENTIALS;
+        })
+        .catch(() => {
+          this.confirmButtonDisabled_ = false;
         });
   }
 
@@ -414,12 +420,14 @@ export class SettingsSecurityKeysCredentialManagementDialogElement extends
       this.newDisplayName_ = this.editingCredential_.userDisplayName;
     }
 
+    this.confirmButtonDisabled_ = true;
     this.browserProxy_
         .updateUserInformation(
             this.editingCredential_.credentialId,
             this.editingCredential_.userHandle, this.newUsername_,
             this.newDisplayName_)
         .then((response) => {
+          this.confirmButtonDisabled_ = false;
           if (!response.success) {
             this.onError_(response.message);
             return;
@@ -435,6 +443,9 @@ export class SettingsSecurityKeysCredentialManagementDialogElement extends
             }
             return c;
           });
+        })
+        .catch(() => {
+          this.confirmButtonDisabled_ = false;
         });
     this.dialogPage_ = CredentialManagementDialogPage.CREDENTIALS;
   }

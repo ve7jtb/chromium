@@ -393,11 +393,15 @@ void SecurityKeysCredentialHandler::HandlePIN(const base::ListValue& args) {
 
 void SecurityKeysCredentialHandler::HandleEnumerate(
     const base::ListValue& args) {
-  CHECK_EQ(state_, State::kReady, base::NotFatalUntil::M162);
   CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
+  if (state_ != State::kReady || !credential_management_ ||
+      !callback_id_.empty()) {
+    LOG(WARNING)
+        << "Ignoring securityKeyCredentialManagementEnumerate: handler not ready "
+        << "(state=" << static_cast<int>(state_) << ")";
+    return;
+  }
   CHECK_EQ(1u, args.size(), base::NotFatalUntil::M162);
-  CHECK(credential_management_, base::NotFatalUntil::M162);
-  CHECK(callback_id_.empty(), base::NotFatalUntil::M162);
 
   state_ = State::kGettingCredentials;
   callback_id_ = args[0].GetString();
@@ -407,11 +411,17 @@ void SecurityKeysCredentialHandler::HandleEnumerate(
 }
 
 void SecurityKeysCredentialHandler::HandleDelete(const base::ListValue& args) {
-  CHECK_EQ(State::kReady, state_, base::NotFatalUntil::M162);
   CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
-  CHECK_EQ(2u, args.size(), base::NotFatalUntil::M162);
-  CHECK(credential_management_, base::NotFatalUntil::M162);
-  CHECK(callback_id_.empty(), base::NotFatalUntil::M162);
+  if (state_ != State::kReady || !credential_management_ ||
+      !callback_id_.empty()) {
+    LOG(WARNING)
+        << "Ignoring securityKeyCredentialManagementDelete: handler not ready "
+        << "(state=" << static_cast<int>(state_) << ")";
+    return;
+  }
+  if (args.size() != 2u) {
+    return;
+  }
 
   state_ = State::kDeletingCredentials;
   callback_id_ = args[0].GetString();
@@ -433,11 +443,17 @@ void SecurityKeysCredentialHandler::HandleDelete(const base::ListValue& args) {
 
 void SecurityKeysCredentialHandler::HandleUpdateUserInformation(
     const base::ListValue& args) {
-  CHECK_EQ(State::kReady, state_, base::NotFatalUntil::M162);
   CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M162);
-  CHECK_EQ(5u, args.size(), base::NotFatalUntil::M162);
-  CHECK(credential_management_, base::NotFatalUntil::M162);
-  CHECK(callback_id_.empty(), base::NotFatalUntil::M162);
+  if (state_ != State::kReady || !credential_management_ ||
+      !callback_id_.empty()) {
+    LOG(WARNING)
+        << "Ignoring securityKeyCredentialManagementUpdate: handler not ready "
+        << "(state=" << static_cast<int>(state_) << ")";
+    return;
+  }
+  if (args.size() != 5u) {
+    return;
+  }
 
   state_ = State::kUpdatingUserInformation;
   callback_id_ = args[0].GetString();
