@@ -420,17 +420,26 @@ std::vector<uint8_t> VirtualFidoDevice::GetAttestationKey(
   switch (algorithm) {
     case CoseAlgorithmIdentifier::kMlDsa44: {
       static const base::NoDestructor<std::vector<uint8_t>> kMlDsa44Key(
-          crypto::keypair::PrivateKey::GenerateMldsa44().ToPrivateKeyInfo());
+          crypto::keypair::PrivateKey::FromMldsa44PrivateKey(
+              crypto::hash::Sha256(base::byte_span_from_cstring(
+                  "Chromium Virtual Fido Device ML-DSA-44 Attestation Seed")))
+              .ToPrivateKeyInfo());
       return *kMlDsa44Key;
     }
     case CoseAlgorithmIdentifier::kMlDsa65: {
       static const base::NoDestructor<std::vector<uint8_t>> kMlDsa65Key(
-          crypto::keypair::PrivateKey::GenerateMldsa65().ToPrivateKeyInfo());
+          crypto::keypair::PrivateKey::FromMldsa65PrivateKey(
+              crypto::hash::Sha256(base::byte_span_from_cstring(
+                  "Chromium Virtual Fido Device ML-DSA-65 Attestation Seed")))
+              .ToPrivateKeyInfo());
       return *kMlDsa65Key;
     }
     case CoseAlgorithmIdentifier::kMlDsa87: {
       static const base::NoDestructor<std::vector<uint8_t>> kMlDsa87Key(
-          crypto::keypair::PrivateKey::GenerateMldsa87().ToPrivateKeyInfo());
+          crypto::keypair::PrivateKey::FromMldsa87PrivateKey(
+              crypto::hash::Sha256(base::byte_span_from_cstring(
+                  "Chromium Virtual Fido Device ML-DSA-87 Attestation Seed")))
+              .ToPrivateKeyInfo());
       return *kMlDsa87Key;
     }
     case CoseAlgorithmIdentifier::kEs256:
