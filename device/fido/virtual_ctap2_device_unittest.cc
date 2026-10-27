@@ -490,6 +490,7 @@ TEST_F(VirtualCtap2DeviceTest, PostQuantumExportMdsAndCertificates) {
 
   std::vector<std::string> b64_certs;
   std::vector<std::string> b64_cose_keys;
+  std::vector<std::string> b64_root_hashes;
 
   for (const auto& spec : kSpecs) {
     scoped_refptr<VirtualFidoDevice::State> state =
@@ -533,10 +534,13 @@ TEST_F(VirtualCtap2DeviceTest, PostQuantumExportMdsAndCertificates) {
         output_dir.AppendASCII(base::StringPrintf("batch_%s.pem", spec.name)),
         pem);
 
-    // 2. Get canonical CBOR COSE_Key from mtc_debug
+    // 2. Get canonical CBOR COSE_Key and leaf root_hash from mtc_debug
     ASSERT_TRUE(response->mtc_debug.has_value());
     const std::vector<uint8_t>& pub_key_cbor = response->mtc_debug->pub_key;
     b64_cose_keys.push_back(base::Base64Encode(pub_key_cbor));
+    ASSERT_TRUE(response->mtc_debug->root_hash.has_value());
+    b64_root_hashes.push_back(
+        base::Base64Encode(*response->mtc_debug->root_hash));
     base::WriteFile(
         output_dir.AppendASCII(
             base::StringPrintf("batch_%s_cose.cbor", spec.name)),
@@ -549,10 +553,6 @@ TEST_F(VirtualCtap2DeviceTest, PostQuantumExportMdsAndCertificates) {
     roots_json += "    \"" + b64_certs[i] + "\"" +
                   (i + 1 < b64_certs.size() ? ",\n" : "\n  ]");
   }
-
-  std::array<uint8_t, 32> test_root_hash = crypto::hash::Sha256(
-      base::byte_span_from_cstring("Chromium Virtual CTAP2 MTC Test Root"));
-  std::string b64_root_hash = base::Base64Encode(test_root_hash);
 
   std::string mds_json = base::StringPrintf(
       "{\n"
@@ -580,8 +580,23 @@ TEST_F(VirtualCtap2DeviceTest, PostQuantumExportMdsAndCertificates) {
       "      \"logNumber\": 0,\n"
       "      \"trustedSubtrees\": [\n"
       "        {\n"
-      "          \"start\": 0,\n"
-      "          \"end\": 1,\n"
+      "          \"start\": 1,\n"
+      "          \"end\": 2,\n"
+      "          \"rootHash\": \"%s\"\n"
+      "        },\n"
+      "        {\n"
+      "          \"start\": 2,\n"
+      "          \"end\": 3,\n"
+      "          \"rootHash\": \"%s\"\n"
+      "        },\n"
+      "        {\n"
+      "          \"start\": 3,\n"
+      "          \"end\": 4,\n"
+      "          \"rootHash\": \"%s\"\n"
+      "        },\n"
+      "        {\n"
+      "          \"start\": 4,\n"
+      "          \"end\": 5,\n"
       "          \"rootHash\": \"%s\"\n"
       "        }\n"
       "      ],\n"
@@ -618,8 +633,11 @@ TEST_F(VirtualCtap2DeviceTest, PostQuantumExportMdsAndCertificates) {
       "    }\n"
       "  ]\n"
       "}\n",
-      roots_json.c_str(), b64_root_hash.c_str(), b64_cose_keys[0].c_str(),
-      b64_cose_keys[1].c_str(), b64_cose_keys[2].c_str(), b64_cose_keys[3].c_str());
+      roots_json.c_str(), b64_root_hashes[0].c_str(),
+      b64_root_hashes[1].c_str(), b64_root_hashes[2].c_str(),
+      b64_root_hashes[3].c_str(), b64_cose_keys[0].c_str(),
+      b64_cose_keys[1].c_str(), b64_cose_keys[2].c_str(),
+      b64_cose_keys[3].c_str());
 
   base::WriteFile(
       output_dir.AppendASCII("pqc_virtual_authenticator_mds.json"), mds_json);

@@ -172,6 +172,83 @@ std::vector<uint8_t> ConstructSignatureBuffer(
   return signature_buffer;
 }
 
+int64_t GetMtcSerialForAlgorithm(CoseAlgorithmIdentifier alg) {
+  switch (alg) {
+    case CoseAlgorithmIdentifier::kMlDsa44:
+      return 1;
+    case CoseAlgorithmIdentifier::kMlDsa65:
+      return 2;
+    case CoseAlgorithmIdentifier::kMlDsa87:
+      return 3;
+    case CoseAlgorithmIdentifier::kEs256:
+      return 4;
+    default:
+      return 1;
+  }
+}
+
+void AppendUint16BE(std::vector<uint8_t>& buf, uint16_t val) {
+  buf.push_back(static_cast<uint8_t>((val >> 8) & 0xFF));
+  buf.push_back(static_cast<uint8_t>(val & 0xFF));
+}
+
+void AppendUint48BE(std::vector<uint8_t>& buf, uint64_t val) {
+  for (int shift = 40; shift >= 0; shift -= 8) {
+    buf.push_back(static_cast<uint8_t>((val >> shift) & 0xFF));
+  }
+}
+
+void AppendUint64BE(std::vector<uint8_t>& buf, uint64_t val) {
+  for (int shift = 56; shift >= 0; shift -= 8) {
+    buf.push_back(static_cast<uint8_t>((val >> shift) & 0xFF));
+  }
+}
+
+std::array<uint8_t, 32> ComputeFidoMtcLeafHash(
+    base::span<const uint8_t> ca_id,
+    uint64_t serial,
+    uint64_t not_before,
+    uint64_t not_after,
+    base::span<const uint8_t, 16> aaguid,
+    std::optional<uint64_t> fw_version,
+    base::span<const uint8_t> cose_pub_key,
+    base::span<const uint8_t> extensions) {
+  std::array<uint8_t, 32> pub_key_hash = crypto::hash::Sha256(cose_pub_key);
+  std::vector<uint8_t> leaf_input;
+  leaf_input.push_back(0x00);  // RFC 9162 §2.1.1 leaf domain separator
+  AppendUint16BE(leaf_input, static_cast<uint16_t>(ca_id.size()));
+  base::Extend(leaf_input, ca_id);
+  AppendUint64BE(leaf_input, serial);
+  AppendUint64BE(leaf_input, not_before);
+  AppendUint64BE(leaf_input, not_after);
+  base::Extend(leaf_input, aaguid);
+  if (fw_version.has_value()) {
+    leaf_input.push_back(0x01);
+    AppendUint64BE(leaf_input, *fw_version);
+  } else {
+    leaf_input.push_back(0x00);
+  }
+  base::Extend(leaf_input, pub_key_hash);
+  AppendUint16BE(leaf_input, static_cast<uint16_t>(extensions.size()));
+  base::Extend(leaf_input, extensions);
+  return crypto::hash::Sha256(leaf_input);
+}
+
+std::vector<uint8_t> BuildSingleLeafMtcProof(
+    uint64_t serial,
+    base::span<const uint8_t> extensions) {
+  std::vector<uint8_t> proof;
+  AppendUint16BE(proof, static_cast<uint16_t>(extensions.size()));
+  base::Extend(proof, extensions);
+  AppendUint48BE(proof, serial);
+  AppendUint48BE(proof, serial + 1);
+  AppendUint16BE(proof, 0);  // proof_bytes_len = 0 (single-leaf subtree)
+  proof.push_back(0x00);     // sig_len = 0 (uint24)
+  proof.push_back(0x00);
+  proof.push_back(0x00);
+  return proof;
+}
+
 std::vector<uint8_t> ConstructMakeCredentialResponse(
     std::optional<std::vector<uint8_t>> attestation_certificate,
     base::span<const uint8_t> signature,
@@ -192,23 +269,7 @@ std::vector<uint8_t> ConstructMakeCredentialResponse(
     attestation_map.emplace("sig", base::ToVector(signature));
 
     if (attestation_format == "mtc") {
-      int64_t serial = 1;
-      switch (attestation_algorithm) {
-        case CoseAlgorithmIdentifier::kMlDsa44:
-          serial = 1;
-          break;
-        case CoseAlgorithmIdentifier::kMlDsa65:
-          serial = 2;
-          break;
-        case CoseAlgorithmIdentifier::kMlDsa87:
-          serial = 3;
-          break;
-        case CoseAlgorithmIdentifier::kEs256:
-          serial = 4;
-          break;
-        default:
-          break;
-      }
+      int64_t serial = GetMtcSerialForAlgorithm(attestation_algorithm);
       cbor::Value::MapValue mtc_cert_map;
       mtc_cert_map.emplace("caId", base::ToVector(kDeviceAaguid));
       mtc_cert_map.emplace("serial", serial);
@@ -1599,19 +1660,25 @@ std::optional<CtapDeviceResponseCode> VirtualCtap2Device::OnMakeCredential(
     mtc_debug_response->not_after = 253402300799ULL;  // RFC 5280 non-expiring
     mtc_debug_response->firmware_version = 1;
 
+    std::vector<uint8_t> proof_extensions;
     // deviceSerial is only included if Enterprise Attestation was requested
     // (EP 1 or 2), respecting the privacy gate.
     if (enterprise_attestation_requested) {
       mtc_debug_response->device_serial = "VIRTUAL_CTAP2_PQC_001";
+      proof_extensions.assign(mtc_debug_response->device_serial->begin(),
+                              mtc_debug_response->device_serial->end());
     }
 
-    std::array<uint8_t, 32> test_root_hash = crypto::hash::Sha256(
-        base::byte_span_from_cstring("Chromium Virtual CTAP2 MTC Test Root"));
-    mtc_debug_response->root_hash = base::ToVector(test_root_hash);
-
-    mtc_debug_response->mtc_proof = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                                     0x00, 0x01, 0x00, 0x20};
-    base::Extend(*mtc_debug_response->mtc_proof, test_root_hash);
+    uint64_t mtc_serial =
+        static_cast<uint64_t>(GetMtcSerialForAlgorithm(attestation_alg));
+    std::array<uint8_t, 32> leaf_root_hash = ComputeFidoMtcLeafHash(
+        kDeviceAaguid, mtc_serial, *mtc_debug_response->not_before,
+        *mtc_debug_response->not_after, kDeviceAaguid,
+        mtc_debug_response->firmware_version, attestation_cose_key,
+        proof_extensions);
+    mtc_debug_response->root_hash = base::ToVector(leaf_root_hash);
+    mtc_debug_response->mtc_proof =
+        BuildSingleLeafMtcProof(mtc_serial, proof_extensions);
   }
 
   std::string effective_attestation_format = config_.attestation_format;
