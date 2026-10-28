@@ -482,3 +482,15 @@ if (is_mac) {
     ]
   }
 }
+
+# Development-only raw CTAP endpoint; no physical transport emulation.
+if (!is_android && !is_ios) {
+  executable("virtual_ctap2_harness") {
+    testonly = true
+    sources = [ "virtual_ctap2_harness.cc" ]
+    deps = [
+      ":fido",
+      "//base",
+    ]
+  }
+}
