@@ -111,6 +111,123 @@ class VirtualCtap2DeviceTest : public ::testing::Test {
   base::test::TaskEnvironment task_environment_;
 };
 
+TEST_F(VirtualCtap2DeviceTest, ResetClearsPersistentState) {
+  auto state = base::MakeRefCounted<VirtualFidoDevice::State>();
+  VirtualCtap2Device::Config config;
+  config.ctap2_versions = {Ctap2Version::kCtap2_0, Ctap2Version::kCtap2_1};
+  config.pin_support = true;
+  config.pin_uv_auth_token_support = true;
+  config.internal_uv_support = true;
+  config.bio_enrollment_support = true;
+  config.resident_key_support = true;
+  config.min_pin_length_support = true;
+  config.always_uv = true;
+  config.support_enterprise_attestation = true;
+  state->fingerprints_enrolled = true;
+  state->bio_enrollment_provisioned = true;
+  MakeDevice(state, config);
+  device_->SetPin("12345678");
+  device_->SetMinPinLength(8);
+  device_->SetForcePinChange(true);
+  ASSERT_TRUE(
+      state->InjectRegistration(std::vector<uint8_t>{1, 2, 3}, "example.com"));
+  ASSERT_TRUE(state->InjectResidentKey(
+      std::vector<uint8_t>{4, 5, 6}, "example.com", std::vector<uint8_t>{1},
+      "user", "Test User"));
+  state->pin_retries = 0;
+  state->pin_retries_since_insertion = 3;
+  state->soft_locked = true;
+  state->uv_retries = 0;
+  state->pin_uv_token_permissions = 0xff;
+  state->pin_uv_token_rpid = "example.com";
+  std::ranges::fill(state->pin_token, 0x42);
+  const auto old_key = state->ecdh_key->ToPrivateKeyInfo();
+  state->bio_templates.emplace(1, "finger");
+  state->bio_current_template_id = 1;
+  state->large_blob = {1, 2, 3};
+
+  TestFuture future;
+  SendCommand(device_.get(), std::vector<uint8_t>{0x07}, future.GetCallback());
+  ASSERT_TRUE(future.Wait());
+  ASSERT_TRUE(future.Get());
+  EXPECT_THAT(*future.Get(), ::testing::ElementsAre(0x00));
+  EXPECT_TRUE(state->registrations.empty());
+  EXPECT_TRUE(state->pin.empty());
+  EXPECT_EQ(state->pin_retries, static_cast<int>(kMaxPinRetries));
+  EXPECT_EQ(state->pin_retries_since_insertion, 0);
+  EXPECT_FALSE(state->soft_locked);
+  EXPECT_EQ(state->uv_retries, static_cast<int>(kMaxUvRetries));
+  EXPECT_EQ(state->pin_uv_token_permissions, 0);
+  EXPECT_FALSE(state->pin_uv_token_rpid);
+  EXPECT_FALSE(std::ranges::all_of(state->pin_token,
+                                   [](uint8_t x) { return x == 0x42; }));
+  EXPECT_NE(state->ecdh_key->ToPrivateKeyInfo(), old_key);
+  EXPECT_FALSE(state->force_pin_change);
+  EXPECT_EQ(state->min_pin_length, kMinPinLength);
+  EXPECT_FALSE(state->fingerprints_enrolled);
+  EXPECT_FALSE(state->bio_enrollment_provisioned);
+  EXPECT_FALSE(state->bio_current_template_id);
+  EXPECT_TRUE(state->bio_templates.empty());
+  EXPECT_EQ(state->large_blob,
+            base::MakeRefCounted<VirtualFidoDevice::State>()->large_blob);
+
+  // Reconstructing the wrapper must not re-enable settings disabled by reset.
+  MakeDevice(state, config);
+  TestFuture info;
+  SendCommand(device_.get(), std::vector<uint8_t>{0x04}, info.GetCallback());
+  auto decoded = DecodeCBOR(info.Take().value());
+  ASSERT_TRUE(decoded);
+  const auto& options = decoded->GetMap().at(cbor::Value(4)).GetMap();
+  EXPECT_FALSE(options.at(cbor::Value("clientPin")).GetBool());
+  EXPECT_FALSE(options.at(cbor::Value("uv")).GetBool());
+  EXPECT_FALSE(options.contains(cbor::Value("ep")) &&
+               options.at(cbor::Value("ep")).GetBool());
+  EXPECT_FALSE(options.contains(cbor::Value("alwaysUv")) &&
+               options.at(cbor::Value("alwaysUv")).GetBool());
+}
+
+TEST_F(VirtualCtap2DeviceTest, ResetRejectsPayloadAndLateRequests) {
+  auto state = base::MakeRefCounted<VirtualFidoDevice::State>();
+  VirtualCtap2Device::Config config;
+  MakeDevice(state, config);
+  ASSERT_TRUE(
+      state->InjectRegistration(std::vector<uint8_t>{1}, "example.com"));
+  TestFuture malformed;
+  SendCommand(device_.get(), std::vector<uint8_t>{0x07, 0xa0},
+              malformed.GetCallback());
+  EXPECT_THAT(*malformed.Get(), ::testing::ElementsAre(0x03));
+  EXPECT_EQ(state->registrations.size(), 1u);
+  state->last_power_cycle = base::TimeTicks::Now() - base::Seconds(11);
+  // A new per-request wrapper must not reopen the reset window.
+  MakeDevice(state, config);
+  TestFuture late;
+  SendCommand(device_.get(), std::vector<uint8_t>{0x07}, late.GetCallback());
+  EXPECT_THAT(*late.Get(), ::testing::ElementsAre(0x30));
+  EXPECT_EQ(state->registrations.size(), 1u);
+  state->last_power_cycle = base::TimeTicks::Now();
+  TestFuture reset;
+  SendCommand(device_.get(), std::vector<uint8_t>{0x07}, reset.GetCallback());
+  EXPECT_THAT(*reset.Get(), ::testing::ElementsAre(0x00));
+  EXPECT_TRUE(state->registrations.empty());
+}
+
+TEST_F(VirtualCtap2DeviceTest, ResetRequiresPresenceAndCanBeCancelled) {
+  MakeDevice();
+  auto* state = device_->mutable_state();
+  ASSERT_TRUE(
+      state->InjectRegistration(std::vector<uint8_t>{1}, "example.com"));
+  state->simulate_press_callback =
+      base::BindLambdaForTesting([](VirtualFidoDevice*) { return false; });
+  TestFuture future;
+  SendCommand(device_.get(), std::vector<uint8_t>{0x07}, future.GetCallback());
+  task_environment_.RunUntilIdle();
+  EXPECT_FALSE(future.IsReady());
+  EXPECT_EQ(state->registrations.size(), 1u);
+  device_->Cancel(0);
+  EXPECT_THAT(*future.Get(), ::testing::ElementsAre(0x2d));
+  EXPECT_EQ(state->registrations.size(), 1u);
+}
+
 TEST_F(VirtualCtap2DeviceTest, ParseMakeCredentialRequestForVirtualCtapKey) {
   const auto& cbor_request = cbor::Reader::Read(
       base::span(test_data::kCtapMakeCredentialRequest).subspan<1>());

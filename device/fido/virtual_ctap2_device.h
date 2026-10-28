@@ -389,6 +389,9 @@ class COMPONENT_EXPORT(DEVICE_FIDO) VirtualCtap2Device
   CtapDeviceResponseCode OnAuthenticatorGetInfo(
       std::vector<uint8_t>* response) const;
 
+  std::optional<CtapDeviceResponseCode> OnReset(
+      base::span<const uint8_t> request);
+
   void InitPendingRPs();
   void GetNextRP(cbor::Value::MapValue* response_map);
   void InitPendingRegistrations(base::span<const uint8_t> rp_id_hash);
@@ -407,7 +410,7 @@ class COMPONENT_EXPORT(DEVICE_FIDO) VirtualCtap2Device
 
   std::unique_ptr<VirtualU2fDevice> u2f_device_;
 
-  const Config config_;
+  Config config_;
   RequestState request_state_;
   base::WeakPtrFactory<FidoDevice> weak_factory_{this};
 };
