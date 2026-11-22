@@ -13852,9 +13852,12 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(blink::features::kMediaCaptureElementPreview)},
 
 #if BUILDFLAG(ENABLE_SMART_CARD)
+    {"smart-card", flag_descriptions::kSmartCardName,
+     flag_descriptions::kSmartCardDescription, kOsCrOS | kOsMac,
+     FEATURE_VALUE_TYPE(blink::features::kSmartCard)},
     {"smart-card-context-release",
      flag_descriptions::kSmartCardContextReleaseName,
-     flag_descriptions::kSmartCardContextReleaseDescription, kOsCrOS,
+     flag_descriptions::kSmartCardContextReleaseDescription, kOsCrOS | kOsMac,
      FEATURE_VALUE_TYPE(blink::features::kSmartCardContextRelease)},
 #endif  // BUILDFLAG(ENABLE_SMART_CARD)
 
