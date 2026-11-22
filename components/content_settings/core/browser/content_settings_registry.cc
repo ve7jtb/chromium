@@ -672,7 +672,8 @@ void ContentSettingsRegistry::Init() {
            WebsiteSettingsInfo::TOP_ORIGIN_ONLY_SCOPE,
            // Add more platforms as implementation progresses.
            // Target is DESKTOP.
-           WebsiteSettingsRegistry::PLATFORM_CHROMEOS,
+           WebsiteSettingsRegistry::PLATFORM_CHROMEOS |
+               WebsiteSettingsRegistry::PLATFORM_MAC,
            ContentSettingsInfo::INHERIT_IF_LESS_PERMISSIVE,
            PermissionSettingsInfo::EXCEPTIONS_ON_SECURE_ORIGINS_ONLY);
 

@@ -17,6 +17,7 @@
 #include "build/build_config.h"
 #include "chrome/browser/smart_card/smart_card_permission_context.h"
 #include "chrome/browser/smart_card/smart_card_permission_context_factory.h"
+#include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/web_applications/test/isolated_web_app_test_utils.h"
 #include "chrome/browser/web_applications/isolated_web_apps/test/isolated_web_app_builder.h"
 #include "chrome/common/chrome_switches.h"
@@ -145,10 +146,15 @@ IN_PROC_BROWSER_TEST_F(ChromeOsSmartCardDelegateBrowserTest,
 
                                           base::Seconds(16));
 
-  // Hiding takes focus from the window.
-  content::WebContents::FromRenderFrameHost(app_frame_)
-      ->GetTopLevelNativeWindow()
-      ->Hide();
+  // Hiding / activating the main browser takes focus from the IWA window.
+  auto* window = BrowserWindow::FindBrowserWindowWithWebContents(
+      content::WebContents::FromRenderFrameHost(app_frame_));
+  window->Deactivate();
+  window->Hide();
+  if (browser() && browser()->GetWindow()) {
+    browser()->GetWindow()->Activate();
+  }
+  ASSERT_TRUE(base::test::RunUntil([window]() { return !window->IsActive(); }));
 
   // Window does not have focus and the last connection was more than
   // `kSmartCardAllowedReconnectTime` ago. Hence, connection is not possible.
@@ -170,10 +176,15 @@ IN_PROC_BROWSER_TEST_F(ChromeOsSmartCardDelegateBrowserTest,
   pscs.set_last_used_time_for_testing(ContentSettingsType::SMART_CARD_GUARD,
                                       base::Time::Now() + base::Minutes(1));
 
-  // Hiding takes focus from the window.
-  content::WebContents::FromRenderFrameHost(app_frame_)
-      ->GetTopLevelNativeWindow()
-      ->Hide();
+  // Hiding / activating the main browser takes focus from the IWA window.
+  auto* window = BrowserWindow::FindBrowserWindowWithWebContents(
+      content::WebContents::FromRenderFrameHost(app_frame_));
+  window->Deactivate();
+  window->Hide();
+  if (browser() && browser()->GetWindow()) {
+    browser()->GetWindow()->Activate();
+  }
+  ASSERT_TRUE(base::test::RunUntil([window]() { return !window->IsActive(); }));
 
   // Window does not have focus but the last connection was less than
   // `kSmartCardAllowedReconnectTime` ago (probably still in the future). Hence,
@@ -206,10 +217,15 @@ IN_PROC_BROWSER_TEST_F(ChromeOsSmartCardDelegateBrowserTest,
                        PermissionRequestInTheBackgroundImpossible) {
   GrantReaderPermission();
 
-  // Hiding takes focus from the window.
-  content::WebContents::FromRenderFrameHost(app_frame_)
-      ->GetTopLevelNativeWindow()
-      ->Hide();
+  // Hiding / activating the main browser takes focus from the IWA window.
+  auto* window = BrowserWindow::FindBrowserWindowWithWebContents(
+      content::WebContents::FromRenderFrameHost(app_frame_));
+  window->Deactivate();
+  window->Hide();
+  if (browser() && browser()->GetWindow()) {
+    browser()->GetWindow()->Activate();
+  }
+  ASSERT_TRUE(base::test::RunUntil([window]() { return !window->IsActive(); }));
 
   base::test::TestFuture<bool> got_permission;
   // This should immediately return false, not even trying to display any

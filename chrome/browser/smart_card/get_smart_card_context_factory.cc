@@ -4,10 +4,13 @@
 
 #include "chrome/browser/smart_card/get_smart_card_context_factory.h"
 
+#include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
 
 #if BUILDFLAG(IS_CHROMEOS_DEVICE)
 #include "chrome/browser/chromeos/extensions/smart_card_provider_private/smart_card_provider_private_api.h"
+#elif BUILDFLAG(IS_MAC)
+#include "chrome/browser/smart_card/mac/mac_smart_card_context_factory.h"
 #else
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/smart_card/fake_smart_card_device_service.h"
@@ -20,6 +23,9 @@ GetSmartCardContextFactory(content::BrowserContext& browser_context) {
   // Get the smart card (PC/SC) service from a provider extension.
   return extensions::SmartCardProviderPrivateAPI::Get(browser_context)
       .GetSmartCardContextFactory();
+#elif BUILDFLAG(IS_MAC)
+  // Use macOS native PCSC.framework (CryptoTokenKit).
+  return smart_card::mac::CreateMacSmartCardContextFactory();
 #else
   // Emulate the smart card (PC/SC) service when running a ChromeOS build on
   // Linux. This makes make manual testing of features like permission prompt

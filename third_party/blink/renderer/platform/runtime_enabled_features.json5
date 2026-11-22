@@ -6596,6 +6596,7 @@
       status: {
         "Android": "",
         "ChromeOS": "stable",
+        "Mac": "experimental",
         "default": "test",
       },
     },

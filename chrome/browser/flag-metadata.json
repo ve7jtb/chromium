@@ -9118,6 +9118,11 @@
     "expiry_milestone": 180
   },
   {
+    "name": "smart-card",
+    "owners": [ "zgroza@chromium.org" ],
+    "expiry_milestone": 166
+  },
+  {
     "name": "smart-card-context-release",
     "owners": [ "zgroza@chromium.org" ],
     "expiry_milestone": 166

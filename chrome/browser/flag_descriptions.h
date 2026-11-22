@@ -4667,6 +4667,11 @@ inline constexpr char kProfileCreationDeclineSigninCTAExperimentDescription[] =
     "As part of the Sign In Level Up experiment, changes the decline "
     "sign in CTA string in profile creation entry points";
 
+inline constexpr char kSmartCardName[] = "Web Smart Card API";
+inline constexpr char kSmartCardDescription[] =
+    "Enables the Web Smart Card API (navigator.smartCard) for Isolated Web "
+    "Apps.";
+
 inline constexpr char kSmartCardContextReleaseName[] =
     "Smart Card Context Release";
 inline constexpr char kSmartCardContextReleaseDescription[] =

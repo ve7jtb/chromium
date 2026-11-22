@@ -14,6 +14,7 @@ features:
   per_profile: true
 supported_on:
 - chrome_os:143-
+- chrome.mac:143-
 owners:
 - file://content/browser/smart_card/OWNERS
 schema:
