@@ -4,6 +4,7 @@
 
 #include "chrome/browser/smart_card/smart_card_reader_tracker_impl.h"
 
+#include "base/logging.h"
 #include "base/time/time.h"
 
 namespace {
