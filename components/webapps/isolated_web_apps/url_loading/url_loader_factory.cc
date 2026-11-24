@@ -52,8 +52,10 @@
 #include "content/public/browser/storage_partition.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_observer.h"
+#include "mojo/public/cpp/bindings/callback_helpers.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
+#include "mojo/public/cpp/bindings/receiver.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "mojo/public/cpp/bindings/self_owned_receiver.h"
 #include "net/base/net_errors.h"
@@ -107,6 +109,11 @@ class ForwardingURLLoaderClient : public network::mojom::URLLoaderClient {
     return url_loader_client_.get();
   }
 
+ protected:
+  void SetClientDisconnectHandler(base::OnceClosure handler) {
+    url_loader_client_.set_disconnect_handler(std::move(handler));
+  }
+
  private:
   // `network::mojom::URLLoaderClient`:
   void OnReceiveEarlyHints(network::mojom::EarlyHintsPtr early_hints) override {
@@ -143,14 +150,47 @@ class ForwardingURLLoaderClient : public network::mojom::URLLoaderClient {
 // `response_head->parsed_headers` for deducing cross-origin isolation and
 // enforcing connection allowlists before throttles run) and implies an
 // additional hop via the network service.
+//
+// Lifetime: Do NOT own this client with `mojo::MakeSelfOwnedReceiver`. For
+// small worker scripts (e.g., module workers or imported WASM glue), the
+// upstream URLLoader can deliver `OnReceiveResponse`, `OnComplete`, and close
+// its `URLLoaderClient` pipe before the async `ParseHeaders()` RPC returns. A
+// self-owned receiver would immediately destroy this object on inbound pipe
+// disconnect, invalidating `weak_factory_` and dropping both the response and
+// completion so the worker hangs until timeout. Instead, this client manages
+// its own lifetime and defers self-deletion until `ParseHeaders()` has settled
+// (or the downstream client disconnects).
 class HeaderParsingURLLoaderClient : public ForwardingURLLoaderClient {
  public:
-  HeaderParsingURLLoaderClient(
+  static void Bind(
       const GURL& url,
-      mojo::PendingRemote<network::mojom::URLLoaderClient> url_loader_client)
-      : ForwardingURLLoaderClient(std::move(url_loader_client)), url_(url) {}
+      mojo::PendingRemote<network::mojom::URLLoaderClient> url_loader_client,
+      mojo::PendingReceiver<network::mojom::URLLoaderClient> receiver) {
+    // Self-owned; deleted in `MaybeDeleteSelf()` or `OnDownstreamDisconnect()`.
+    new HeaderParsingURLLoaderClient(url, std::move(url_loader_client),
+                                     std::move(receiver));
+  }
 
  private:
+  HeaderParsingURLLoaderClient(
+      const GURL& url,
+      mojo::PendingRemote<network::mojom::URLLoaderClient> url_loader_client,
+      mojo::PendingReceiver<network::mojom::URLLoaderClient> receiver)
+      : ForwardingURLLoaderClient(std::move(url_loader_client)),
+        url_(url),
+        receiver_(this, std::move(receiver)) {
+    // Keep this object alive across inbound disconnect while `ParseHeaders()`
+    // is in flight so the buffered response/completion can still be forwarded.
+    receiver_.set_disconnect_handler(
+        base::BindOnce(&HeaderParsingURLLoaderClient::OnInboundDisconnect,
+                       base::Unretained(this)));
+    // If the downstream worker loader goes away (e.g., cancelled/terminated),
+    // tear down immediately and drop any pending `ParseHeaders()` callback.
+    SetClientDisconnectHandler(
+        base::BindOnce(&HeaderParsingURLLoaderClient::OnDownstreamDisconnect,
+                       base::Unretained(this)));
+  }
+
   // network::mojom::URLLoaderClient:
   void OnReceiveResponse(
       network::mojom::URLResponseHeadPtr response_head,
@@ -159,11 +199,16 @@ class HeaderParsingURLLoaderClient : public ForwardingURLLoaderClient {
     defer_complete_ = true;
 
     auto headers = response_head->headers;
+    // Wrap the callback so even a Network Service crash/restart settles
+    // `defer_complete_` and avoids leaking this self-owned client.
     content::GetNetworkService()->ParseHeaders(
         url_, std::move(headers),
-        base::BindOnce(&HeaderParsingURLLoaderClient::RespondWithParsedHeaders,
-                       weak_factory_.GetWeakPtr(), std::move(response_head),
-                       std::move(body), std::move(cached_metadata)));
+        mojo::WrapCallbackWithDefaultInvokeIfNotRun(
+            base::BindOnce(
+                &HeaderParsingURLLoaderClient::RespondWithParsedHeaders,
+                weak_factory_.GetWeakPtr(), std::move(response_head),
+                std::move(body), std::move(cached_metadata)),
+            network::mojom::ParsedHeadersPtr()));
   }
 
   void OnComplete(const network::URLLoaderCompletionStatus& status) override {
@@ -186,14 +231,35 @@ class HeaderParsingURLLoaderClient : public ForwardingURLLoaderClient {
     defer_complete_ = false;
     if (deferred_completion_status_) {
       url_loader_client()->OnComplete(std::move(*deferred_completion_status_));
+      deferred_completion_status_.reset();
+    }
+    // If the upstream pipe already closed while `ParseHeaders()` was in flight,
+    // it is now safe to destroy ourselves.
+    MaybeDeleteSelf();
+  }
+
+  void OnInboundDisconnect() {
+    inbound_disconnected_ = true;
+    receiver_.reset();
+    MaybeDeleteSelf();
+  }
+
+  void OnDownstreamDisconnect() { delete this; }
+
+  void MaybeDeleteSelf() {
+    if (inbound_disconnected_ && !defer_complete_) {
+      delete this;
     }
   }
 
   const GURL url_;
+  mojo::Receiver<network::mojom::URLLoaderClient> receiver_;
 
   // Set to true if the response has been received but not yet propagated to the
   // next layer due to in-progress header parsing.
   bool defer_complete_ = false;
+  // Set to true once the upstream URLLoader closes its client pipe.
+  bool inbound_disconnected_ = false;
   std::optional<network::URLLoaderCompletionStatus> deferred_completion_status_;
 
   base::WeakPtrFactory<HeaderParsingURLLoaderClient> weak_factory_{this};
@@ -363,11 +429,10 @@ class IsolatedWebAppURLLoaderFactoryImpl
 
       auto receiving_end =
           forwarding_loader_client.InitWithNewPipeAndPassReceiver();
-      mojo::MakeSelfOwnedReceiver(
-          std::make_unique<HeaderParsingURLLoaderClient>(
-              resource_request.url,
-              std::exchange(original_loader_client,
-                            std::move(forwarding_loader_client))),
+      HeaderParsingURLLoaderClient::Bind(
+          resource_request.url,
+          std::exchange(original_loader_client,
+                        std::move(forwarding_loader_client)),
           std::move(receiving_end));
 
       // Now calls to `original_loader_client` will be routed through the new
