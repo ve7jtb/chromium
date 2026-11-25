@@ -54,7 +54,8 @@ void CheckIsolatedWebAppBundleUserInstallabilityCommand::StartWithLock(
     return;
   }
 
-  if (!IwaRuntimeDataProvider::GetInstance().GetUserInstallAllowlistData(
+  if (!IsIwaDevModeEnabled(profile_) &&
+      !IwaRuntimeDataProvider::GetInstance().GetUserInstallAllowlistData(
           bundle_id.id())) {
     ReportResult(IsolatedInstallabilityCheckResult::kNotOnUserInstallAllowlist,
                  std::nullopt);
