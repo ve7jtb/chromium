@@ -88,6 +88,8 @@
 #import "chrome/browser/ui/cocoa/bookmarks/bookmark_menu_bridge.h"
 #import "chrome/browser/ui/cocoa/confirm_quit.h"
 #import "chrome/browser/ui/cocoa/confirm_quit_panel_controller.h"
+#include "chrome/browser/ui/web_applications/web_app_dialogs.h"
+#include "chrome/browser/web_applications/isolated_web_apps/isolated_web_app_features.h"
 #include "chrome/browser/ui/cocoa/handoff_observer.h"
 #import "chrome/browser/ui/cocoa/history_menu_bridge.h"
 #import "chrome/browser/ui/cocoa/profiles/profile_menu_controller.h"
@@ -2069,6 +2071,19 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
 - (void)application:(NSApplication*)sender openURLs:(NSArray<NSURL*>*)urls {
   StartupTabs startupTabs;
   for (NSURL* url in urls) {
+    if ([url isFileURL] &&
+        [[[url pathExtension] lowercaseString] isEqualToString:@"swbn"]) {
+      base::FilePath bundlePath = base::apple::NSURLToFilePath(url);
+      app_controller_mac::RunInLastProfileSafely(
+          base::BindOnce(^(Profile* profile) {
+            if (profile && web_app::IsIwaUnmanagedInstallEnabled(profile)) {
+              web_app::LaunchIsolatedWebAppInstaller(profile, bundlePath,
+                                                     base::DoNothing());
+            }
+          }),
+          app_controller_mac::kShowProfilePickerOnFailure);
+      continue;
+    }
     // Handle the google-chrome:// scheme (and chromium://).
     // We convert every URL to string here to reuse the shared
     // StripGoogleChromeScheme logic. While we could check [url scheme] first

@@ -5799,10 +5799,13 @@ const FeatureEntry kFeatureEntries[] = {
     {"enable-set-shape", flag_descriptions::kEnableSetShapeName,
      flag_descriptions::kEnableSetShapeDescription, kOsCrOS,
      FEATURE_VALUE_TYPE(blink::features::kSetShape)},
+#endif
+#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC)
     {"enable-isolated-web-app-unmanaged-install",
      flag_descriptions::kEnableIsolatedWebAppUnmanagedInstallName,
      flag_descriptions::kEnableIsolatedWebAppUnmanagedInstallDescription,
-     kOsCrOS, FEATURE_VALUE_TYPE(features::kIsolatedWebAppUnmanagedInstall)},
+     kOsCrOS | kOsMac,
+     FEATURE_VALUE_TYPE(features::kIsolatedWebAppUnmanagedInstall)},
 #endif
     {"enable-isolated-web-app-dev-mode",
      flag_descriptions::kEnableIsolatedWebAppDevModeName,

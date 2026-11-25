@@ -1383,11 +1383,11 @@ BASE_FEATURE(kIsolatedWebAppFastUpdateCheck, base::FEATURE_DISABLED_BY_DEFAULT);
 
 // Enables users on unmanaged devices to install Isolated Web Apps.
 BASE_FEATURE(kIsolatedWebAppUnmanagedInstall,
-#if BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC)
              base::FEATURE_ENABLED_BY_DEFAULT
 #else
              base::FEATURE_DISABLED_BY_DEFAULT
-#endif  // BUILDFLAG(IS_CHROMEOS)
+#endif  // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC)
 );
 
 #if BUILDFLAG(IS_CHROMEOS)
