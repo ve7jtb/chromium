@@ -151,12 +151,14 @@ constexpr PrefsForManagedContentSettingsMapEntry
          ContentSettingsType::SUB_APPS_WITHOUT_PROMPTS, CONTENT_SETTING_ALLOW},
         {prefs::kManagedSubAppsWithoutPromptsBlockedForOrigins,
          ContentSettingsType::SUB_APPS_WITHOUT_PROMPTS, CONTENT_SETTING_BLOCK},
-#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC)
+#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
+    BUILDFLAG(IS_WIN)
         {prefs::kManagedSmartCardConnectAllowedForUrls,
          ContentSettingsType::SMART_CARD_GUARD, CONTENT_SETTING_ALLOW},
         {prefs::kManagedSmartCardConnectBlockedForUrls,
          ContentSettingsType::SMART_CARD_GUARD, CONTENT_SETTING_BLOCK},
-#endif  // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC)
+#endif  // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
+        // BUILDFLAG(IS_WIN)
 #if BUILDFLAG(IS_CHROMEOS)
         {prefs::kManagedDeviceAttributesAllowedForOrigins,
          ContentSettingsType::DEVICE_ATTRIBUTES, CONTENT_SETTING_ALLOW},
@@ -257,10 +259,12 @@ constexpr const char* kManagedPrefs[] = {
     prefs::kManagedDirectSocketsBlockedForUrls,
     prefs::kManagedSubAppsWithoutPromptsAllowedForOrigins,
     prefs::kManagedSubAppsWithoutPromptsBlockedForOrigins,
-#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC)
+#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
+    BUILDFLAG(IS_WIN)
     prefs::kManagedSmartCardConnectAllowedForUrls,
     prefs::kManagedSmartCardConnectBlockedForUrls,
-#endif  // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC)
+#endif  // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
+        // BUILDFLAG(IS_WIN)
 #if BUILDFLAG(IS_CHROMEOS)
     prefs::kManagedDeviceAttributesAllowedForOrigins,
     prefs::kManagedDeviceAttributesBlockedForOrigins,
@@ -304,9 +308,11 @@ constexpr const char* kManagedDefaultPrefs[] = {
     prefs::kManagedDefaultDirectSocketsSetting,
     prefs::kManagedDefaultSubAppsWithoutPromptsSetting,
     prefs::kManagedDefaultControlledFrameSetting,
-#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC)
+#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
+    BUILDFLAG(IS_WIN)
     prefs::kManagedDefaultSmartCardConnectSetting,
-#endif  // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC)
+#endif  // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
+        // BUILDFLAG(IS_WIN)
 #if BUILDFLAG(IS_CHROMEOS)
     prefs::kManagedDefaultDeviceAttributesSetting,
 #endif  // BUILDFLAG(IS_CHROMEOS)
@@ -427,10 +433,12 @@ const PolicyProvider::PrefsForManagedDefaultMapEntry
          prefs::kManagedDefaultControlledFrameSetting},
         {ContentSettingsType::SUB_APPS_WITHOUT_PROMPTS,
          prefs::kManagedDefaultSubAppsWithoutPromptsSetting},
-#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC)
+#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
+    BUILDFLAG(IS_WIN)
         {ContentSettingsType::SMART_CARD_GUARD,
          prefs::kManagedDefaultSmartCardConnectSetting},
-#endif  // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC)
+#endif  // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
+        // BUILDFLAG(IS_WIN)
 #if BUILDFLAG(IS_CHROMEOS)
         {ContentSettingsType::DEVICE_ATTRIBUTES,
          prefs::kManagedDefaultDeviceAttributesSetting},
@@ -529,7 +537,8 @@ void PolicyProvider::GetContentSettingsFromPreferences() {
         continue;
       }
 
-#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC)
+#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
+    BUILDFLAG(IS_WIN)
       if (entry.content_type == ContentSettingsType::SMART_CARD_GUARD &&
           !pattern_pair.first.MatchesSingleOrigin()) {
         VLOG(1) << "Smart card reader access cannot be allowed or blocked by "

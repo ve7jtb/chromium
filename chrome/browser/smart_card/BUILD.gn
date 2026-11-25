@@ -54,14 +54,21 @@ source_set("smart_card") {
       "//content/public/browser",
     ]
 
-    if (is_mac) {
+    if (is_mac || is_linux || is_win) {
       sources += [
-        "mac/mac_smart_card_context_factory.cc",
-        "mac/mac_smart_card_context_factory.h",
-        "mac/mac_smart_card_util.cc",
-        "mac/mac_smart_card_util.h",
+        "pcsc/pcsc_api.cc",
+        "pcsc/pcsc_api.h",
+        "pcsc/pcsc_constants.h",
+        "pcsc/pcsc_smart_card_context_factory.cc",
+        "pcsc/pcsc_smart_card_context_factory.h",
+        "pcsc/pcsc_smart_card_util.cc",
+        "pcsc/pcsc_smart_card_util.h",
       ]
-      frameworks = [ "PCSC.framework" ]
+      if (is_mac) {
+        frameworks = [ "PCSC.framework" ]
+      } else if (is_win) {
+        libs = [ "winscard.lib" ]
+      }
     }
 
     if (is_chromeos) {
@@ -82,8 +89,8 @@ if (enable_smart_card) {
       "smart_card_permission_request_unittest.cc",
       "smart_card_reader_tracker_impl_unittest.cc",
     ]
-    if (is_mac) {
-      sources += [ "mac/mac_smart_card_util_unittest.cc" ]
+    if (is_mac || is_linux || is_win) {
+      sources += [ "pcsc/pcsc_smart_card_util_unittest.cc" ]
     }
     deps = [
       ":smart_card",

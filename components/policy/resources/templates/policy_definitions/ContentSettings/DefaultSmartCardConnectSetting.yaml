@@ -16,6 +16,8 @@ features:
 supported_on:
 - chrome_os:143-
 - chrome.mac:143-
+- chrome.linux:143-
+- chrome.win:143-
 items:
 - caption: Do not allow Isolated Web App origins to connect to smart card readers
   name: BlockSmartCardConnect

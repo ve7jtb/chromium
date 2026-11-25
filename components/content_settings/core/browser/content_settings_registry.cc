@@ -674,7 +674,9 @@ void ContentSettingsRegistry::Init() {
            // Add more platforms as implementation progresses.
            // Target is DESKTOP.
            WebsiteSettingsRegistry::PLATFORM_CHROMEOS |
-               WebsiteSettingsRegistry::PLATFORM_MAC,
+               WebsiteSettingsRegistry::PLATFORM_MAC |
+               WebsiteSettingsRegistry::PLATFORM_LINUX |
+               WebsiteSettingsRegistry::PLATFORM_WINDOWS,
            ContentSettingsInfo::INHERIT_IF_LESS_PERMISSIVE,
            PermissionSettingsInfo::EXCEPTIONS_ON_SECURE_ORIGINS_ONLY);
 

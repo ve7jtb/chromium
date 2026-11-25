@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef CHROME_BROWSER_SMART_CARD_MAC_MAC_SMART_CARD_UTIL_H_
-#define CHROME_BROWSER_SMART_CARD_MAC_MAC_SMART_CARD_UTIL_H_
+#ifndef CHROME_BROWSER_SMART_CARD_PCSC_PCSC_SMART_CARD_UTIL_H_
+#define CHROME_BROWSER_SMART_CARD_PCSC_PCSC_SMART_CARD_UTIL_H_
 
 #include <cstdint>
 #include <string>
@@ -12,9 +12,10 @@
 #include "base/containers/span.h"
 #include "services/device/public/mojom/smart_card.mojom.h"
 
-namespace smart_card::mac {
+namespace smart_card::pcsc {
 
-device::mojom::SmartCardError SmartCardErrorFromPcscResult(int32_t pcsc_result);
+device::mojom::SmartCardError SmartCardErrorFromPcscResult(
+    uint32_t pcsc_result);
 
 uint32_t PcscShareModeFromMojo(device::mojom::SmartCardShareMode share_mode);
 
@@ -41,6 +42,6 @@ uint16_t MojoEventCountFromPcsc(uint32_t pcsc_state);
 // Parses a PC/SC multi-string (NUL-separated, double-NUL-terminated).
 std::vector<std::string> ParsePcscMultiString(base::span<const char> buffer);
 
-}  // namespace smart_card::mac
+}  // namespace smart_card::pcsc
 
-#endif  // CHROME_BROWSER_SMART_CARD_MAC_MAC_SMART_CARD_UTIL_H_
+#endif  // CHROME_BROWSER_SMART_CARD_PCSC_PCSC_SMART_CARD_UTIL_H_

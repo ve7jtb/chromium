@@ -5800,11 +5800,12 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kEnableSetShapeDescription, kOsCrOS,
      FEATURE_VALUE_TYPE(blink::features::kSetShape)},
 #endif
-#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC)
+#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
+    BUILDFLAG(IS_WIN)
     {"enable-isolated-web-app-unmanaged-install",
      flag_descriptions::kEnableIsolatedWebAppUnmanagedInstallName,
      flag_descriptions::kEnableIsolatedWebAppUnmanagedInstallDescription,
-     kOsCrOS | kOsMac,
+     kOsCrOS | kOsMac | kOsLinux | kOsWin,
      FEATURE_VALUE_TYPE(features::kIsolatedWebAppUnmanagedInstall)},
 #endif
     {"enable-isolated-web-app-dev-mode",
@@ -13856,11 +13857,13 @@ const FeatureEntry kFeatureEntries[] = {
 
 #if BUILDFLAG(ENABLE_SMART_CARD)
     {"smart-card", flag_descriptions::kSmartCardName,
-     flag_descriptions::kSmartCardDescription, kOsCrOS | kOsMac,
+     flag_descriptions::kSmartCardDescription,
+     kOsCrOS | kOsMac | kOsLinux | kOsWin,
      FEATURE_VALUE_TYPE(blink::features::kSmartCard)},
     {"smart-card-context-release",
      flag_descriptions::kSmartCardContextReleaseName,
-     flag_descriptions::kSmartCardContextReleaseDescription, kOsCrOS | kOsMac,
+     flag_descriptions::kSmartCardContextReleaseDescription,
+     kOsCrOS | kOsMac | kOsLinux | kOsWin,
      FEATURE_VALUE_TYPE(blink::features::kSmartCardContextRelease)},
 #endif  // BUILDFLAG(ENABLE_SMART_CARD)
 

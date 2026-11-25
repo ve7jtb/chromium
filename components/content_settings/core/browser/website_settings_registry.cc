@@ -301,7 +301,8 @@ void WebsiteSettingsRegistry::Init() {
            WebsiteSettingsInfo::TOP_ORIGIN_ONLY_SCOPE,
            // Add more platforms as implementation progresses.
            // Target is DESKTOP.
-           PLATFORM_CHROMEOS | PLATFORM_MAC,
+           PLATFORM_CHROMEOS | PLATFORM_MAC | PLATFORM_LINUX |
+               PLATFORM_WINDOWS,
            WebsiteSettingsInfo::DONT_INHERIT_IN_INCOGNITO);
   Register(ContentSettingsType::REVOKED_ABUSIVE_NOTIFICATION_PERMISSIONS,
            "abusive-notification-permissions", base::Value(),

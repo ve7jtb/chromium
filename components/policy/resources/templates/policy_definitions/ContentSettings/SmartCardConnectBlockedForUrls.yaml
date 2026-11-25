@@ -15,6 +15,8 @@ features:
 supported_on:
 - chrome_os:143-
 - chrome.mac:143-
+- chrome.linux:143-
+- chrome.win:143-
 owners:
 - file://content/browser/smart_card/OWNERS
 schema:
