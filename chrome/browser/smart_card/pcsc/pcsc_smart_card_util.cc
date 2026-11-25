@@ -2,13 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "chrome/browser/smart_card/mac/mac_smart_card_util.h"
-
-#include <PCSC/winscard.h>
+#include "chrome/browser/smart_card/pcsc/pcsc_smart_card_util.h"
 
 #include <string_view>
 
-namespace smart_card::mac {
+#include "chrome/browser/smart_card/pcsc/pcsc_constants.h"
+
+namespace smart_card::pcsc {
 
 using device::mojom::SmartCardConnectionState;
 using device::mojom::SmartCardDisposition;
@@ -19,67 +19,67 @@ using device::mojom::SmartCardReaderStateFlags;
 using device::mojom::SmartCardReaderStateFlagsPtr;
 using device::mojom::SmartCardShareMode;
 
-SmartCardError SmartCardErrorFromPcscResult(int32_t pcsc_result) {
-  switch (static_cast<uint32_t>(pcsc_result)) {
-    case SCARD_W_REMOVED_CARD:
+SmartCardError SmartCardErrorFromPcscResult(uint32_t pcsc_result) {
+  switch (pcsc_result) {
+    case kSCardWRemovedCard:
       return SmartCardError::kRemovedCard;
-    case SCARD_W_RESET_CARD:
+    case kSCardWResetCard:
       return SmartCardError::kResetCard;
-    case SCARD_W_UNPOWERED_CARD:
+    case kSCardWUnpoweredCard:
       return SmartCardError::kUnpoweredCard;
-    case SCARD_W_UNRESPONSIVE_CARD:
+    case kSCardWUnresponsiveCard:
       return SmartCardError::kUnresponsiveCard;
-    case SCARD_W_UNSUPPORTED_CARD:
+    case kSCardWUnsupportedCard:
       return SmartCardError::kUnsupportedCard;
-    case SCARD_E_READER_UNAVAILABLE:
+    case kSCardEReaderUnavailable:
       return SmartCardError::kReaderUnavailable;
-    case SCARD_E_SHARING_VIOLATION:
+    case kSCardESharingViolation:
       return SmartCardError::kSharingViolation;
-    case SCARD_E_NOT_TRANSACTED:
+    case kSCardENotTransacted:
       return SmartCardError::kNotTransacted;
-    case SCARD_E_NO_SMARTCARD:
+    case kSCardENoSmartcard:
       return SmartCardError::kNoSmartcard;
-    case SCARD_E_PROTO_MISMATCH:
+    case kSCardEProtoMismatch:
       return SmartCardError::kProtoMismatch;
-    case SCARD_E_SYSTEM_CANCELLED:
+    case kSCardESystemCancelled:
       return SmartCardError::kSystemCancelled;
-    case SCARD_E_NOT_READY:
+    case kSCardENotReady:
       return SmartCardError::kNotReady;
-    case SCARD_E_CANCELLED:
+    case kSCardECancelled:
       return SmartCardError::kCancelled;
-    case SCARD_E_INSUFFICIENT_BUFFER:
+    case kSCardEInsufficientBuffer:
       return SmartCardError::kInsufficientBuffer;
-    case SCARD_E_INVALID_HANDLE:
+    case kSCardEInvalidHandle:
       return SmartCardError::kInvalidHandle;
-    case SCARD_E_INVALID_PARAMETER:
+    case kSCardEInvalidParameter:
       return SmartCardError::kInvalidParameter;
-    case SCARD_E_INVALID_VALUE:
+    case kSCardEInvalidValue:
       return SmartCardError::kInvalidValue;
-    case SCARD_E_NO_MEMORY:
+    case kSCardENoMemory:
       return SmartCardError::kNoMemory;
-    case SCARD_E_TIMEOUT:
+    case kSCardETimeout:
       return SmartCardError::kTimeout;
-    case SCARD_E_UNKNOWN_READER:
+    case kSCardEUnknownReader:
       return SmartCardError::kUnknownReader;
-    case SCARD_E_NO_READERS_AVAILABLE:
+    case kSCardENoReadersAvailable:
       return SmartCardError::kNoReadersAvailable;
-    case SCARD_E_SERVICE_STOPPED:
+    case kSCardEServiceStopped:
       return SmartCardError::kServiceStopped;
-    case SCARD_E_NO_SERVICE:
+    case kSCardENoService:
       return SmartCardError::kNoService;
-    case SCARD_F_COMM_ERROR:
+    case kSCardFCommError:
       return SmartCardError::kCommError;
-    case SCARD_F_INTERNAL_ERROR:
+    case kSCardFInternalError:
       return SmartCardError::kInternalError;
-    case SCARD_E_UNKNOWN_CARD:
+    case kSCardEUnknownCard:
       return SmartCardError::kUnknownCard;
-    case SCARD_E_SERVER_TOO_BUSY:
+    case kSCardEServerTooBusy:
       return SmartCardError::kServerTooBusy;
-    // Note: On macOS PCSC.framework, SCARD_E_UNSUPPORTED_FEATURE is aliased
-    // to SCARD_E_UNEXPECTED (0x8010001F).
-    case SCARD_E_UNEXPECTED:
+    case kSCardEUnexpected:
       return SmartCardError::kUnexpected;
-    case SCARD_P_SHUTDOWN:
+    case kSCardEUnsupportedFeature:
+      return SmartCardError::kUnsupportedFeature;
+    case kSCardPShutdown:
       return SmartCardError::kShutdown;
     default:
       return SmartCardError::kUnknown;
@@ -89,35 +89,35 @@ SmartCardError SmartCardErrorFromPcscResult(int32_t pcsc_result) {
 uint32_t PcscShareModeFromMojo(SmartCardShareMode share_mode) {
   switch (share_mode) {
     case SmartCardShareMode::kShared:
-      return SCARD_SHARE_SHARED;
+      return kSCardShareShared;
     case SmartCardShareMode::kExclusive:
-      return SCARD_SHARE_EXCLUSIVE;
+      return kSCardShareExclusive;
     case SmartCardShareMode::kDirect:
-      return SCARD_SHARE_DIRECT;
+      return kSCardShareDirect;
   }
 }
 
 uint32_t PcscProtocolsFromMojo(const SmartCardProtocols& protocols) {
-  uint32_t result = SCARD_PROTOCOL_UNDEFINED;
+  uint32_t result = kSCardProtocolUndefined;
   if (protocols.t0) {
-    result |= SCARD_PROTOCOL_T0;
+    result |= kSCardProtocolT0;
   }
   if (protocols.t1) {
-    result |= SCARD_PROTOCOL_T1;
+    result |= kSCardProtocolT1;
   }
   if (protocols.raw) {
-    result |= SCARD_PROTOCOL_RAW;
+    result |= kSCardProtocolRaw;
   }
   return result;
 }
 
 SmartCardProtocol MojoProtocolFromPcsc(uint32_t pcsc_protocol) {
   switch (pcsc_protocol) {
-    case SCARD_PROTOCOL_T0:
+    case kSCardProtocolT0:
       return SmartCardProtocol::kT0;
-    case SCARD_PROTOCOL_T1:
+    case kSCardProtocolT1:
       return SmartCardProtocol::kT1;
-    case SCARD_PROTOCOL_RAW:
+    case kSCardProtocolRaw:
       return SmartCardProtocol::kRaw;
     default:
       return SmartCardProtocol::kUndefined;
@@ -127,32 +127,32 @@ SmartCardProtocol MojoProtocolFromPcsc(uint32_t pcsc_protocol) {
 uint32_t PcscDispositionFromMojo(SmartCardDisposition disposition) {
   switch (disposition) {
     case SmartCardDisposition::kLeave:
-      return SCARD_LEAVE_CARD;
+      return kSCardLeaveCard;
     case SmartCardDisposition::kReset:
-      return SCARD_RESET_CARD;
+      return kSCardResetCard;
     case SmartCardDisposition::kUnpower:
-      return SCARD_UNPOWER_CARD;
+      return kSCardUnpowerCard;
     case SmartCardDisposition::kEject:
-      return SCARD_EJECT_CARD;
+      return kSCardEjectCard;
   }
 }
 
 SmartCardConnectionState MojoConnectionStateFromPcsc(uint32_t pcsc_state) {
-  // macOS PCSC returns SCARD_* state flags as a bitmask; report the most
-  // specific state present.
-  if (pcsc_state & SCARD_SPECIFIC) {
+  // Canonical PC/SC state flags form a bitmask; report the most specific state
+  // present.
+  if (pcsc_state & kSCardSpecific) {
     return SmartCardConnectionState::kSpecific;
   }
-  if (pcsc_state & SCARD_NEGOTIABLE) {
+  if (pcsc_state & kSCardNegotiable) {
     return SmartCardConnectionState::kNegotiable;
   }
-  if (pcsc_state & SCARD_POWERED) {
+  if (pcsc_state & kSCardPowered) {
     return SmartCardConnectionState::kPowered;
   }
-  if (pcsc_state & SCARD_SWALLOWED) {
+  if (pcsc_state & kSCardSwallowed) {
     return SmartCardConnectionState::kSwallowed;
   }
-  if (pcsc_state & SCARD_PRESENT) {
+  if (pcsc_state & kSCardPresent) {
     return SmartCardConnectionState::kPresent;
   }
   return SmartCardConnectionState::kAbsent;
@@ -162,34 +162,34 @@ uint32_t PcscReaderStateFlagsFromMojo(const SmartCardReaderStateFlags& flags,
                                       uint16_t count) {
   uint32_t result = static_cast<uint32_t>(count) << 16;
   if (flags.ignore) {
-    result |= SCARD_STATE_IGNORE;
+    result |= kSCardStateIgnore;
   }
   if (flags.changed) {
-    result |= SCARD_STATE_CHANGED;
+    result |= kSCardStateChanged;
   }
   if (flags.unknown) {
-    result |= SCARD_STATE_UNKNOWN;
+    result |= kSCardStateUnknown;
   }
   if (flags.unavailable) {
-    result |= SCARD_STATE_UNAVAILABLE;
+    result |= kSCardStateUnavailable;
   }
   if (flags.empty) {
-    result |= SCARD_STATE_EMPTY;
+    result |= kSCardStateEmpty;
   }
   if (flags.present) {
-    result |= SCARD_STATE_PRESENT;
+    result |= kSCardStatePresent;
   }
   if (flags.exclusive) {
-    result |= SCARD_STATE_EXCLUSIVE;
+    result |= kSCardStateExclusive;
   }
   if (flags.inuse) {
-    result |= SCARD_STATE_INUSE;
+    result |= kSCardStateInUse;
   }
   if (flags.mute) {
-    result |= SCARD_STATE_MUTE;
+    result |= kSCardStateMute;
   }
   if (flags.unpowered) {
-    result |= SCARD_STATE_UNPOWERED;
+    result |= kSCardStateUnpowered;
   }
   return result;
 }
@@ -197,17 +197,17 @@ uint32_t PcscReaderStateFlagsFromMojo(const SmartCardReaderStateFlags& flags,
 SmartCardReaderStateFlagsPtr MojoReaderStateFlagsFromPcsc(uint32_t pcsc_state) {
   auto flags = SmartCardReaderStateFlags::New();
   const uint32_t lower = pcsc_state & 0xFFFF;
-  flags->unaware = (lower == SCARD_STATE_UNAWARE);
-  flags->ignore = (lower & SCARD_STATE_IGNORE) != 0;
-  flags->changed = (lower & SCARD_STATE_CHANGED) != 0;
-  flags->unknown = (lower & SCARD_STATE_UNKNOWN) != 0;
-  flags->unavailable = (lower & SCARD_STATE_UNAVAILABLE) != 0;
-  flags->empty = (lower & SCARD_STATE_EMPTY) != 0;
-  flags->present = (lower & SCARD_STATE_PRESENT) != 0;
-  flags->exclusive = (lower & SCARD_STATE_EXCLUSIVE) != 0;
-  flags->inuse = (lower & SCARD_STATE_INUSE) != 0;
-  flags->mute = (lower & SCARD_STATE_MUTE) != 0;
-  flags->unpowered = (lower & SCARD_STATE_UNPOWERED) != 0;
+  flags->unaware = (lower == kSCardStateUnaware);
+  flags->ignore = (lower & kSCardStateIgnore) != 0;
+  flags->changed = (lower & kSCardStateChanged) != 0;
+  flags->unknown = (lower & kSCardStateUnknown) != 0;
+  flags->unavailable = (lower & kSCardStateUnavailable) != 0;
+  flags->empty = (lower & kSCardStateEmpty) != 0;
+  flags->present = (lower & kSCardStatePresent) != 0;
+  flags->exclusive = (lower & kSCardStateExclusive) != 0;
+  flags->inuse = (lower & kSCardStateInUse) != 0;
+  flags->mute = (lower & kSCardStateMute) != 0;
+  flags->unpowered = (lower & kSCardStateUnpowered) != 0;
   return flags;
 }
 
@@ -232,4 +232,4 @@ std::vector<std::string> ParsePcscMultiString(base::span<const char> buffer) {
   return result;
 }
 
-}  // namespace smart_card::mac
+}  // namespace smart_card::pcsc

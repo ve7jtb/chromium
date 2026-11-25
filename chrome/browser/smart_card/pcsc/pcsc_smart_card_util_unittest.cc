@@ -2,17 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "chrome/browser/smart_card/mac/mac_smart_card_util.h"
-
-#include <PCSC/winscard.h>
+#include "chrome/browser/smart_card/pcsc/pcsc_smart_card_util.h"
 
 #include <string>
 #include <vector>
 
+#include "chrome/browser/smart_card/pcsc/pcsc_constants.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
-namespace smart_card::mac {
+namespace smart_card::pcsc {
 namespace {
 
 using device::mojom::SmartCardConnectionState;
@@ -25,64 +24,69 @@ using device::mojom::SmartCardShareMode;
 using testing::ElementsAre;
 using testing::IsEmpty;
 
-TEST(MacSmartCardUtilTest, ErrorMapping) {
-  EXPECT_EQ(SmartCardErrorFromPcscResult(SCARD_E_NO_READERS_AVAILABLE),
+TEST(PcscSmartCardUtilTest, ErrorMapping) {
+  EXPECT_EQ(SmartCardErrorFromPcscResult(kSCardENoReadersAvailable),
             SmartCardError::kNoReadersAvailable);
-  EXPECT_EQ(SmartCardErrorFromPcscResult(SCARD_E_CANCELLED),
+  EXPECT_EQ(SmartCardErrorFromPcscResult(kSCardECancelled),
             SmartCardError::kCancelled);
-  EXPECT_EQ(SmartCardErrorFromPcscResult(SCARD_E_TIMEOUT),
+  EXPECT_EQ(SmartCardErrorFromPcscResult(kSCardETimeout),
             SmartCardError::kTimeout);
-  EXPECT_EQ(SmartCardErrorFromPcscResult(SCARD_W_REMOVED_CARD),
+  EXPECT_EQ(SmartCardErrorFromPcscResult(kSCardWRemovedCard),
             SmartCardError::kRemovedCard);
-  EXPECT_EQ(SmartCardErrorFromPcscResult(SCARD_E_SHARING_VIOLATION),
+  EXPECT_EQ(SmartCardErrorFromPcscResult(kSCardESharingViolation),
             SmartCardError::kSharingViolation);
-  EXPECT_EQ(SmartCardErrorFromPcscResult(SCARD_E_INVALID_HANDLE),
+  EXPECT_EQ(SmartCardErrorFromPcscResult(kSCardEInvalidHandle),
             SmartCardError::kInvalidHandle);
-  EXPECT_EQ(SmartCardErrorFromPcscResult(static_cast<int32_t>(0x8010FFFF)),
+  EXPECT_EQ(SmartCardErrorFromPcscResult(kSCardEUnexpected),
+            SmartCardError::kUnexpected);
+  EXPECT_EQ(SmartCardErrorFromPcscResult(kSCardEUnsupportedFeature),
+            SmartCardError::kUnsupportedFeature);
+  EXPECT_EQ(SmartCardErrorFromPcscResult(0x8010FFFF),
             SmartCardError::kUnknown);
 }
 
-TEST(MacSmartCardUtilTest, ShareModeAndDisposition) {
+TEST(PcscSmartCardUtilTest, ShareModeAndDisposition) {
   EXPECT_EQ(PcscShareModeFromMojo(SmartCardShareMode::kShared),
-            static_cast<uint32_t>(SCARD_SHARE_SHARED));
+            kSCardShareShared);
   EXPECT_EQ(PcscShareModeFromMojo(SmartCardShareMode::kExclusive),
-            static_cast<uint32_t>(SCARD_SHARE_EXCLUSIVE));
+            kSCardShareExclusive);
   EXPECT_EQ(PcscShareModeFromMojo(SmartCardShareMode::kDirect),
-            static_cast<uint32_t>(SCARD_SHARE_DIRECT));
+            kSCardShareDirect);
 
   EXPECT_EQ(PcscDispositionFromMojo(SmartCardDisposition::kLeave),
-            static_cast<uint32_t>(SCARD_LEAVE_CARD));
+            kSCardLeaveCard);
   EXPECT_EQ(PcscDispositionFromMojo(SmartCardDisposition::kReset),
-            static_cast<uint32_t>(SCARD_RESET_CARD));
+            kSCardResetCard);
   EXPECT_EQ(PcscDispositionFromMojo(SmartCardDisposition::kUnpower),
-            static_cast<uint32_t>(SCARD_UNPOWER_CARD));
+            kSCardUnpowerCard);
   EXPECT_EQ(PcscDispositionFromMojo(SmartCardDisposition::kEject),
-            static_cast<uint32_t>(SCARD_EJECT_CARD));
+            kSCardEjectCard);
 }
 
-TEST(MacSmartCardUtilTest, ProtocolsAndConnectionState) {
-  auto protos = SmartCardProtocols::New(/*t0=*/true, /*t1=*/true, /*raw=*/false);
+TEST(PcscSmartCardUtilTest, ProtocolsAndConnectionState) {
+  auto protos =
+      SmartCardProtocols::New(/*t0=*/true, /*t1=*/true, /*raw=*/false);
   EXPECT_EQ(PcscProtocolsFromMojo(*protos),
-            static_cast<uint32_t>(SCARD_PROTOCOL_T0 | SCARD_PROTOCOL_T1));
-  EXPECT_EQ(MojoProtocolFromPcsc(SCARD_PROTOCOL_T0), SmartCardProtocol::kT0);
-  EXPECT_EQ(MojoProtocolFromPcsc(SCARD_PROTOCOL_T1), SmartCardProtocol::kT1);
-  EXPECT_EQ(MojoProtocolFromPcsc(SCARD_PROTOCOL_RAW), SmartCardProtocol::kRaw);
-  EXPECT_EQ(MojoProtocolFromPcsc(SCARD_PROTOCOL_UNDEFINED),
+            kSCardProtocolT0 | kSCardProtocolT1);
+  EXPECT_EQ(MojoProtocolFromPcsc(kSCardProtocolT0), SmartCardProtocol::kT0);
+  EXPECT_EQ(MojoProtocolFromPcsc(kSCardProtocolT1), SmartCardProtocol::kT1);
+  EXPECT_EQ(MojoProtocolFromPcsc(kSCardProtocolRaw), SmartCardProtocol::kRaw);
+  EXPECT_EQ(MojoProtocolFromPcsc(kSCardProtocolUndefined),
             SmartCardProtocol::kUndefined);
 
-  EXPECT_EQ(MojoConnectionStateFromPcsc(SCARD_PRESENT | SCARD_POWERED |
-                                        SCARD_SPECIFIC),
+  EXPECT_EQ(MojoConnectionStateFromPcsc(kSCardPresent | kSCardPowered |
+                                        kSCardSpecific),
             SmartCardConnectionState::kSpecific);
-  EXPECT_EQ(MojoConnectionStateFromPcsc(SCARD_ABSENT),
+  EXPECT_EQ(MojoConnectionStateFromPcsc(kSCardAbsent),
             SmartCardConnectionState::kAbsent);
 }
 
-TEST(MacSmartCardUtilTest, ReaderStateFlagsAndCount) {
+TEST(PcscSmartCardUtilTest, ReaderStateFlagsAndCount) {
   auto flags = SmartCardReaderStateFlags::New();
   flags->present = true;
   flags->inuse = true;
   uint32_t pcsc = PcscReaderStateFlagsFromMojo(*flags, /*count=*/7);
-  EXPECT_EQ(pcsc, (7u << 16) | SCARD_STATE_PRESENT | SCARD_STATE_INUSE);
+  EXPECT_EQ(pcsc, (7u << 16) | kSCardStatePresent | kSCardStateInUse);
 
   auto roundtrip = MojoReaderStateFlagsFromPcsc(pcsc);
   EXPECT_FALSE(roundtrip->unaware);
@@ -92,7 +96,7 @@ TEST(MacSmartCardUtilTest, ReaderStateFlagsAndCount) {
   EXPECT_EQ(MojoEventCountFromPcsc(pcsc), 7u);
 }
 
-TEST(MacSmartCardUtilTest, ParseMultiString) {
+TEST(PcscSmartCardUtilTest, ParseMultiString) {
   constexpr char kTwoReaders[] =
       "Yubico YubiKey OTP+FIDO+CCID\0Second Reader\0\0";
   auto parsed =
@@ -106,4 +110,4 @@ TEST(MacSmartCardUtilTest, ParseMultiString) {
 }
 
 }  // namespace
-}  // namespace smart_card::mac
+}  // namespace smart_card::pcsc

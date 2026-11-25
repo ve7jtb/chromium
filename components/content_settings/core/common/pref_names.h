@@ -80,10 +80,12 @@ inline constexpr char kManagedDefaultLegacyCookieScope[] =
     "profile.managed_default_content_settings.legacy_cookie_scope";
 inline constexpr char kManagedDefaultControlledFrameSetting[] =
     "profile.managed_default_content_settings.controlled_frame";
-#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC)
+#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
+    BUILDFLAG(IS_WIN)
 inline constexpr char kManagedDefaultSmartCardConnectSetting[] =
     "profile.managed_default_content_settings.smart_card_connect";
-#endif  // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC)
+#endif  // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
+        // BUILDFLAG(IS_WIN)
 #if BUILDFLAG(IS_CHROMEOS)
 inline constexpr char kManagedDefaultDeviceAttributesSetting[] =
     "profile.managed_default_content_settings.device_attributes";
@@ -201,12 +203,14 @@ inline constexpr char kManagedSubAppsWithoutPromptsBlockedForOrigins[] =
     "profile.managed_sub_apps_without_prompts_blocked_for_origins";
 inline constexpr char kManagedLegacyCookieScopeForDomains[] =
     "profile.managed_legacy_cookie_scope_for_domains";
-#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC)
+#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
+    BUILDFLAG(IS_WIN)
 inline constexpr char kManagedSmartCardConnectAllowedForUrls[] =
     "profile.managed_smart_card_connect_allowed_for_urls";
 inline constexpr char kManagedSmartCardConnectBlockedForUrls[] =
     "profile.managed_smart_card_connect_blocked_for_urls";
-#endif  // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC)
+#endif  // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
+        // BUILDFLAG(IS_WIN)
 #if BUILDFLAG(IS_CHROMEOS)
 inline constexpr char kManagedDeviceAttributesAllowedForOrigins[] =
     "profile.managed_device_attributes_allowed_for_origins";

@@ -6652,7 +6652,9 @@
       status: {
         "Android": "",
         "ChromeOS": "stable",
+        "Linux": "stable",
         "Mac": "stable",
+        "Win": "stable",
         "default": "test",
       },
     },

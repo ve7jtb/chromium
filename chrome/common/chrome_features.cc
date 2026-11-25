@@ -1361,11 +1361,11 @@ BASE_FEATURE(kInstantUsesSpareRenderer, base::FEATURE_DISABLED_BY_DEFAULT);
 // Enables Isolated Web App Developer Mode, which allows developers to
 // install untrusted Isolated Web Apps.
 BASE_FEATURE(kIsolatedWebAppDevMode,
-#if BUILDFLAG(IS_MAC)
+#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
              base::FEATURE_ENABLED_BY_DEFAULT);
 #else
              base::FEATURE_DISABLED_BY_DEFAULT);
-#endif  // BUILDFLAG(IS_MAC)
+#endif  // BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
 
 // Enables fast update checks for Isolated Web Apps, reducing the update check
 // interval to 1 minute.
@@ -1373,11 +1373,13 @@ BASE_FEATURE(kIsolatedWebAppFastUpdateCheck, base::FEATURE_DISABLED_BY_DEFAULT);
 
 // Enables users on unmanaged devices to install Isolated Web Apps.
 BASE_FEATURE(kIsolatedWebAppUnmanagedInstall,
-#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC)
+#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
+    BUILDFLAG(IS_WIN)
              base::FEATURE_ENABLED_BY_DEFAULT
 #else
              base::FEATURE_DISABLED_BY_DEFAULT
-#endif  // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC)
+#endif  // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
+        // BUILDFLAG(IS_WIN)
 );
 
 #if BUILDFLAG(IS_CHROMEOS)

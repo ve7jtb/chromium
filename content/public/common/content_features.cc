@@ -666,11 +666,13 @@ BASE_FEATURE(kIsolatesPriorityBestEffortWhenHidden,
 // check kEnableIsolatedWebAppsInRenderer command line flag in the renderer
 // process.
 BASE_FEATURE(kIsolatedWebApps,
-#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC)
+#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
+    BUILDFLAG(IS_WIN)
              base::FEATURE_ENABLED_BY_DEFAULT);
 #else
              base::FEATURE_DISABLED_BY_DEFAULT);
-#endif  // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC)
+#endif  // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
+        // BUILDFLAG(IS_WIN)
 
 // Enables process isolation of fenced content (content inside fenced frames)
 // from non-fenced content. See
