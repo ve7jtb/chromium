@@ -25,6 +25,7 @@
 #include "base/strings/utf_string_conversions.h"
 #elif BUILDFLAG(IS_LINUX)
 #include "base/files/file_path.h"
+#include "base/memory/raw_ptr_exclusion.h"
 #include "base/native_library.h"
 #endif
 
@@ -117,7 +118,8 @@ struct PcscLiteIoRequest {
 
 struct PcscLiteReaderState {
   const char* szReader;
-  void* pvUserData;
+  // C ABI struct passed directly to libpcsclite.so.1; cannot use raw_ptr.
+  RAW_PTR_EXCLUSION void* pvUserData;
   PcscLiteDword dwCurrentState;
   PcscLiteDword dwEventState;
   PcscLiteDword cbAtr;
