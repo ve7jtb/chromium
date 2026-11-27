@@ -7,6 +7,7 @@ import collections
 import json
 import os
 import re
+import shlex
 import sys
 import io
 import subprocess
@@ -62,6 +63,7 @@ def main(argv):
   parser.add_argument('--out_dir', required=True)
   parser.add_argument('--tsconfig_base')
   parser.add_argument('--in_files', nargs='*')
+  parser.add_argument('--in_files_rsp')
   parser.add_argument('--manifest_excludes', nargs='*')
   parser.add_argument('--definitions', nargs='*')
   parser.add_argument('--composite', action='store_true')
@@ -71,6 +73,11 @@ def main(argv):
   parser.add_argument('--enable_source_maps', action='store_true')
   parser.add_argument('--output_suffix', required=True)
   args = parser.parse_args(argv)
+
+  if args.in_files_rsp:
+    with open(args.in_files_rsp, encoding='utf-8') as f:
+      rsp_files = shlex.split(f.read())
+    args.in_files = (args.in_files or []) + rsp_files
 
   root_dir = os.path.relpath(args.root_dir, args.gen_dir).replace('\\', '/')
   out_dir = os.path.relpath(args.out_dir, args.gen_dir).replace('\\', '/')

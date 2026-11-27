@@ -78,7 +78,11 @@ template("ts_library") {
     ]
 
     if (defined(in_files)) {
-      args += [ "--in_files" ] + in_files
+      response_file_contents = in_files
+      args += [
+        "--in_files_rsp",
+        "{{response_file_name}}",
+      ]
     }
 
     if (defined(path_mappings_file)) {
