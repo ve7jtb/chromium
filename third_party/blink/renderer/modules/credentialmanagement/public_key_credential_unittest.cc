@@ -16,6 +16,8 @@
 #include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_cmtg_key_outputs.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_cmtg_key_outputs_js_on.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_large_blob_outputs.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_mtc_debug_extension_output.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_mtc_debug_extension_output_js_on.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_prf_inputs.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_prf_inputs_js_on.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_prf_outputs.h"
@@ -704,6 +706,16 @@ struct PRFEvalValues {
   std::optional<Vector<uint8_t>> second;
 };
 
+struct MtcDebugValues {
+  Vector<uint8_t> pub_key;
+  std::optional<String> device_serial;
+  std::optional<uint64_t> not_before;
+  std::optional<uint64_t> not_after;
+  std::optional<uint32_t> firmware_version;
+  std::optional<Vector<uint8_t>> mtc_proof;
+  std::optional<Vector<uint8_t>> root_hash;
+};
+
 struct ExtensionsClientOutputsValues {
   std::optional<bool> appid;
   std::optional<bool> hmac_create_secret;
@@ -718,6 +730,7 @@ struct ExtensionsClientOutputsValues {
   std::optional<Vector<uint8_t>> cmtg_key_sig;
   std::optional<bool> cross_device_fallback_url;
   std::optional<bool> remote_client_data_json;
+  std::optional<MtcDebugValues> mtc_debug;
 };
 
 AuthenticationExtensionsClientOutputs* MakeExtensionsOutputs(
@@ -785,6 +798,29 @@ AuthenticationExtensionsClientOutputs* MakeExtensionsOutputs(
   }
   if (in.remote_client_data_json) {
     extensions->setRemoteClientDataJSON(*in.remote_client_data_json);
+  }
+  if (in.mtc_debug) {
+    auto* mtc_debug = MtcDebugExtensionOutput::Create();
+    mtc_debug->setPubKey(DOMArrayBuffer::Create(in.mtc_debug->pub_key));
+    if (in.mtc_debug->device_serial) {
+      mtc_debug->setDeviceSerial(*in.mtc_debug->device_serial);
+    }
+    if (in.mtc_debug->not_before) {
+      mtc_debug->setNotBefore(*in.mtc_debug->not_before);
+    }
+    if (in.mtc_debug->not_after) {
+      mtc_debug->setNotAfter(*in.mtc_debug->not_after);
+    }
+    if (in.mtc_debug->firmware_version) {
+      mtc_debug->setFirmwareVersion(*in.mtc_debug->firmware_version);
+    }
+    if (in.mtc_debug->mtc_proof) {
+      mtc_debug->setMtcProof(DOMArrayBuffer::Create(*in.mtc_debug->mtc_proof));
+    }
+    if (in.mtc_debug->root_hash) {
+      mtc_debug->setRootHash(DOMArrayBuffer::Create(*in.mtc_debug->root_hash));
+    }
+    extensions->setMtcDebug(mtc_debug);
   }
   return extensions;
 }
@@ -931,6 +967,42 @@ void ExpectExtensionsJSONMatch(
   } else {
     EXPECT_FALSE(extensions.hasCmtgKey());
   }
+  if (values.mtc_debug) {
+    ASSERT_TRUE(extensions.hasMtcDebug());
+    const auto* mtc_debug = extensions.mtcDebug();
+    ASSERT_NE(mtc_debug, nullptr);
+    EXPECT_EQ(mtc_debug->pubKey(),
+              WebAuthnBase64UrlEncode(values.mtc_debug->pub_key));
+    if (values.mtc_debug->device_serial) {
+      ASSERT_TRUE(mtc_debug->hasDeviceSerial());
+      EXPECT_EQ(mtc_debug->deviceSerial(), *values.mtc_debug->device_serial);
+    }
+    if (values.mtc_debug->not_before) {
+      ASSERT_TRUE(mtc_debug->hasNotBefore());
+      EXPECT_EQ(mtc_debug->notBefore(), *values.mtc_debug->not_before);
+    }
+    if (values.mtc_debug->not_after) {
+      ASSERT_TRUE(mtc_debug->hasNotAfter());
+      EXPECT_EQ(mtc_debug->notAfter(), *values.mtc_debug->not_after);
+    }
+    if (values.mtc_debug->firmware_version) {
+      ASSERT_TRUE(mtc_debug->hasFirmwareVersion());
+      EXPECT_EQ(mtc_debug->firmwareVersion(),
+                *values.mtc_debug->firmware_version);
+    }
+    if (values.mtc_debug->mtc_proof) {
+      ASSERT_TRUE(mtc_debug->hasMtcProof());
+      EXPECT_EQ(mtc_debug->mtcProof(),
+                WebAuthnBase64UrlEncode(*values.mtc_debug->mtc_proof));
+    }
+    if (values.mtc_debug->root_hash) {
+      ASSERT_TRUE(mtc_debug->hasRootHash());
+      EXPECT_EQ(mtc_debug->rootHash(),
+                WebAuthnBase64UrlEncode(*values.mtc_debug->root_hash));
+    }
+  } else {
+    EXPECT_FALSE(extensions.hasMtcDebug());
+  }
 }
 
 TEST(PublicKeyCredentialTest, AuthenticationExtensionsClientOutputsToJSON) {
@@ -967,6 +1039,17 @@ TEST(PublicKeyCredentialTest, AuthenticationExtensionsClientOutputsToJSON) {
       {.prf_eval = PRFEvalValues{.enabled = false}},
       {.cmtg_key_data = Vector<uint8_t>{'c', 'm', 't', 'g', 'k'},
        .cmtg_key_sig = Vector<uint8_t>{'c', 'm', 't', 'g', 's'}},
+      {.mtc_debug =
+           MtcDebugValues{
+               .pub_key = Vector<uint8_t>{'p', 'u', 'b', 'k', 'e', 'y'},
+               .device_serial = String("TEST-SERIAL-1234"),
+               .not_before = 1767225600ULL,
+               .not_after = 253402300799ULL,
+               .firmware_version = 332805,
+               .mtc_proof = Vector<uint8_t>{'p', 'r', 'o', 'o', 'f'},
+               .root_hash = Vector<uint8_t>{'r', 'o', 'o', 't', '3', '2'}}},
+      {.mtc_debug =
+           MtcDebugValues{.pub_key = Vector<uint8_t>{'b', 'a', 't', 'c', 'h'}}},
   };
 
   for (const auto& inputs : kTestCases) {

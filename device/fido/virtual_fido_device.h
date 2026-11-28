@@ -21,6 +21,7 @@
 #include "base/memory/scoped_refptr.h"
 #include "base/observer_list.h"
 #include "base/observer_list_types.h"
+#include "base/time/time.h"
 #include "crypto/keypair.h"
 #include "device/fido/ctap_get_assertion_request.h"
 #include "device/fido/ctap_make_credential_request.h"
@@ -235,6 +236,12 @@ class COMPONENT_EXPORT(DEVICE_FIDO) VirtualFidoDevice : public FidoDevice {
     // one of the |Inject*| functions below.
     bool default_backup_state = false;
 
+    // Shared across per-request device wrappers. A simulated power cycle must
+    // explicitly update this timestamp; recreating a wrapper is not a reboot.
+    base::TimeTicks last_power_cycle = base::TimeTicks::Now();
+    // Persist reset-disabled settings when a device is reconstructed.
+    bool factory_reset = false;
+
     // Number of PIN retries remaining.
     int pin_retries = kMaxPinRetries;
     // The number of failed PIN attempts since the token was "inserted".
@@ -428,7 +435,8 @@ class COMPONENT_EXPORT(DEVICE_FIDO) VirtualFidoDevice : public FidoDevice {
   std::string GetId() const override;
 
  protected:
-  static std::vector<uint8_t> GetAttestationKey();
+  static std::vector<uint8_t> GetAttestationKey(
+      CoseAlgorithmIdentifier algorithm = CoseAlgorithmIdentifier::kEs256);
 
   scoped_refptr<State> NewReferenceToState() const { return state_; }
 
@@ -437,7 +445,9 @@ class COMPONENT_EXPORT(DEVICE_FIDO) VirtualFidoDevice : public FidoDevice {
   // https://w3c.github.io/webauthn/#defined-attestation-formats
   std::optional<std::vector<uint8_t>> GenerateAttestationCertificate(
       bool individual_attestation_requested,
-      bool include_transports) const;
+      bool include_transports,
+      CoseAlgorithmIdentifier algorithm =
+          CoseAlgorithmIdentifier::kEs256) const;
 
   void StoreNewKey(base::span<const uint8_t> key_handle,
                    VirtualFidoDevice::RegistrationData registration_data);
