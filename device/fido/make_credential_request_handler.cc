@@ -312,6 +312,25 @@ bool ValidateResponseExtensions(
       if (!request.cmtg_key || !it.second.is_bytestring()) {
         return false;
       }
+    } else if (ext_name == kExtensionMtcDebug) {
+      if (!request.mtc_debug || !it.second.is_map()) {
+        return false;
+      }
+      const auto& debug_map = it.second.GetMap();
+      const bool has_device_serial =
+          debug_map.find(cbor::Value("deviceSerial")) != debug_map.end();
+      const bool enterprise_requested =
+          request.attestation_preference ==
+              AttestationConveyancePreference::
+                  kEnterpriseIfRPListedOnAuthenticator ||
+          request.attestation_preference ==
+              AttestationConveyancePreference::kEnterpriseApprovedByBrowser;
+      if (has_device_serial && !enterprise_requested) {
+        FIDO_LOG(ERROR)
+            << "deviceSerial returned in mtc-debug extension output, but "
+               "Enterprise Attestation (EP 1 or 2) was not requested";
+        return false;
+      }
     } else {
       // Authenticators may not return unknown extensions.
       return false;
@@ -349,6 +368,21 @@ bool ResponseValid(const FidoAuthenticator& authenticator,
            AttestationConveyancePreference::kEnterpriseApprovedByBrowser)) {
     FIDO_LOG(ERROR) << "Enterprise attestation returned but not requested.";
     return false;
+  }
+
+  if (response.mtc_debug && response.mtc_debug->device_serial.has_value()) {
+    const bool enterprise_requested =
+        request.attestation_preference ==
+            AttestationConveyancePreference::
+                kEnterpriseIfRPListedOnAuthenticator ||
+        request.attestation_preference ==
+            AttestationConveyancePreference::kEnterpriseApprovedByBrowser;
+    if (!enterprise_requested) {
+      FIDO_LOG(ERROR)
+          << "deviceSerial present in mtc-debug response, but Enterprise "
+             "Attestation (EP 1 or 2) was not requested";
+      return false;
+    }
   }
 
   if ((request.large_blob_key &&
@@ -1116,6 +1150,11 @@ void MakeCredentialRequestHandler::SpecializeRequestForAuthenticator(
 
   if (request->cmtg_key && !authenticator->Options().supports_cmtg_key) {
     request->cmtg_key = false;
+  }
+
+  if (!request->attestation_formats.empty() &&
+      !authenticator->Options().supports_attestation_formats) {
+    request->attestation_formats.clear();
   }
 }
 

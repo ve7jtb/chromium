@@ -43,7 +43,7 @@ NET_EXPORT bssl::ParsedCertificateList ParseAllValidCerts(
     const CertificateList& x509_certs);
 
 // Supported digest algorithms for signing certificates.
-enum DigestAlgorithm { DIGEST_SHA256 };
+enum DigestAlgorithm { DIGEST_SHA256, DIGEST_SHA384 };
 
 // Adds a RFC 5280 Time value to the given CBB.
 NET_EXPORT bool CBBAddTime(CBB* cbb, base::Time time);

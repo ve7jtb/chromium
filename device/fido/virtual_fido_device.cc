@@ -13,6 +13,7 @@
 #include "base/containers/to_vector.h"
 #include "base/logging.h"
 #include "base/memory/ptr_util.h"
+#include "base/no_destructor.h"
 #include "base/notreached.h"
 #include "base/rand_util.h"
 #include "base/strings/string_number_conversions.h"
@@ -53,6 +54,27 @@ constexpr uint8_t kAttestationKey[]{
     0x37, 0x8b, 0x53, 0xd7, 0x95, 0xc4, 0xa4, 0xdf, 0xfb, 0x41, 0x99, 0xed,
     0xd7, 0x86, 0x2f, 0x23, 0xab, 0xaf, 0x02, 0x03, 0xb4, 0xb8, 0x91, 0x1b,
     0xa0, 0x56, 0x99, 0x94, 0xe1, 0x01};
+
+// PKCS.8 encoded EC P-384 Root CA private key (Fidont Enterprise Root CA ES384)
+// used to sign the classical P-256 batch attestation certificate with
+// ecdsa-with-SHA384.
+constexpr uint8_t kEs384AttestationIssuerKey[]{
+    0x30, 0x81, 0xb6, 0x02, 0x01, 0x00, 0x30, 0x10, 0x06, 0x07, 0x2a, 0x86,
+    0x48, 0xce, 0x3d, 0x02, 0x01, 0x06, 0x05, 0x2b, 0x81, 0x04, 0x00, 0x22,
+    0x04, 0x81, 0x9e, 0x30, 0x81, 0x9b, 0x02, 0x01, 0x01, 0x04, 0x30, 0x68,
+    0x8f, 0x10, 0xe1, 0x62, 0xe9, 0xb8, 0x65, 0x2d, 0xec, 0xff, 0xa6, 0xbb,
+    0x68, 0x87, 0x5b, 0x5d, 0x67, 0xe0, 0x7c, 0xba, 0xec, 0xcc, 0xa5, 0xd2,
+    0xea, 0xd7, 0x76, 0x2d, 0x6a, 0x9d, 0x20, 0xc2, 0x0d, 0xc1, 0x36, 0x88,
+    0xa7, 0xe6, 0xa3, 0x7e, 0x4a, 0x0a, 0x68, 0x69, 0x81, 0x10, 0xf8, 0xa1,
+    0x64, 0x03, 0x62, 0x00, 0x04, 0xd3, 0x4f, 0x15, 0x0e, 0x84, 0xc8, 0x30,
+    0xc2, 0xd0, 0x06, 0x7d, 0xa8, 0x20, 0x63, 0x02, 0x22, 0x1b, 0xb1, 0xbc,
+    0x47, 0x1d, 0x2c, 0x86, 0xe0, 0x26, 0xa3, 0xdb, 0x18, 0xe6, 0xfb, 0xa5,
+    0xb4, 0xd4, 0x6c, 0x40, 0x82, 0x9b, 0xc3, 0x87, 0x95, 0x93, 0x18, 0xc3,
+    0x5e, 0xe9, 0xea, 0xca, 0x72, 0x90, 0xe5, 0x72, 0x7a, 0x69, 0x1e, 0x12,
+    0x29, 0x63, 0xae, 0x62, 0x57, 0xd8, 0x49, 0xa3, 0x2e, 0x91, 0xbe, 0x18,
+    0x63, 0x53, 0xb0, 0xcb, 0x29, 0x72, 0xe2, 0xb4, 0xd8, 0xd1, 0x26, 0x66,
+    0xfe, 0x91, 0xb5, 0x60, 0x4c, 0x70, 0x6a, 0x36, 0x64, 0xed, 0x4a, 0x23,
+    0x81, 0x9f, 0xf9, 0x97, 0x55};
 
 // The default large-blob array. This is an empty CBOR array (0x80) followed by
 // LEFT(SHA-256(h'80'), 16).
@@ -414,16 +436,46 @@ std::string VirtualFidoDevice::GetId() const {
 }
 
 // static
-std::vector<uint8_t> VirtualFidoDevice::GetAttestationKey() {
-  return base::ToVector(kAttestationKey);
+std::vector<uint8_t> VirtualFidoDevice::GetAttestationKey(
+    CoseAlgorithmIdentifier algorithm) {
+  switch (algorithm) {
+    case CoseAlgorithmIdentifier::kMlDsa44: {
+      static const base::NoDestructor<std::vector<uint8_t>> kMlDsa44Key(
+          crypto::keypair::PrivateKey::FromMldsa44PrivateKey(
+              crypto::hash::Sha256(base::byte_span_from_cstring(
+                  "Chromium Virtual Fido Device ML-DSA-44 Attestation Seed")))
+              .ToPrivateKeyInfo());
+      return *kMlDsa44Key;
+    }
+    case CoseAlgorithmIdentifier::kMlDsa65: {
+      static const base::NoDestructor<std::vector<uint8_t>> kMlDsa65Key(
+          crypto::keypair::PrivateKey::FromMldsa65PrivateKey(
+              crypto::hash::Sha256(base::byte_span_from_cstring(
+                  "Chromium Virtual Fido Device ML-DSA-65 Attestation Seed")))
+              .ToPrivateKeyInfo());
+      return *kMlDsa65Key;
+    }
+    case CoseAlgorithmIdentifier::kMlDsa87: {
+      static const base::NoDestructor<std::vector<uint8_t>> kMlDsa87Key(
+          crypto::keypair::PrivateKey::FromMldsa87PrivateKey(
+              crypto::hash::Sha256(base::byte_span_from_cstring(
+                  "Chromium Virtual Fido Device ML-DSA-87 Attestation Seed")))
+              .ToPrivateKeyInfo());
+      return *kMlDsa87Key;
+    }
+    case CoseAlgorithmIdentifier::kEs256:
+    default:
+      return base::ToVector(kAttestationKey);
+  }
 }
 
 std::optional<std::vector<uint8_t>>
 VirtualFidoDevice::GenerateAttestationCertificate(
     bool individual_attestation_requested,
-    bool include_transports) const {
+    bool include_transports,
+    CoseAlgorithmIdentifier algorithm) const {
   auto attestation_private_key =
-      crypto::keypair::PrivateKey::FromPrivateKeyInfo(GetAttestationKey());
+      crypto::keypair::PrivateKey::FromPrivateKeyInfo(GetAttestationKey(algorithm));
   constexpr uint32_t kAttestationCertSerialNumber = 1;
 
   // https://fidoalliance.org/specs/fido-u2f-v1.2-ps-20170411/fido-u2f-authenticator-transports-extension-v1.2-ps-20170411.html#fido-u2f-certificate-transports-extension
@@ -477,15 +529,33 @@ VirtualFidoDevice::GenerateAttestationCertificate(
   // https://w3c.github.io/webauthn/#sctn-packed-attestation-cert-requirements
   // Make the certificate expire about 20 years from now.
   base::Time expiry_date = base::Time::Now() + base::Days(365 * 20);
+  std::string subject_name =
+      "C=US, O=Chromium, OU=Authenticator Attestation, CN=" +
+      (individual_attestation_requested
+           ? state_->individual_attestation_cert_common_name
+           : state_->attestation_cert_common_name);
   std::string attestation_cert;
-  if (!net::x509_util::CreateSelfSignedCert(
-          attestation_private_key->key(), net::x509_util::DIGEST_SHA256,
-          "C=US, O=Chromium, OU=Authenticator Attestation, CN=" +
-              (individual_attestation_requested
-                   ? state_->individual_attestation_cert_common_name
-                   : state_->attestation_cert_common_name),
-          kAttestationCertSerialNumber, base::Time::FromTimeT(1500000000),
-          expiry_date, extensions, &attestation_cert)) {
+  if (algorithm == CoseAlgorithmIdentifier::kEs256) {
+    auto issuer_private_key =
+        crypto::keypair::PrivateKey::FromPrivateKeyInfo(
+            kEs384AttestationIssuerKey);
+    CHECK(issuer_private_key);
+    static constexpr char kEs384IssuerName[] =
+        "CN=Fidont Enterprise Root CA ES384, O=John Bradley, "
+        "OU=Authenticator Attestation, C=CA";
+    if (!net::x509_util::CreateCert(
+            attestation_private_key->key(), net::x509_util::DIGEST_SHA384,
+            subject_name, kAttestationCertSerialNumber,
+            base::Time::FromTimeT(1500000000), expiry_date, extensions,
+            kEs384IssuerName, issuer_private_key->key(), &attestation_cert)) {
+      DVLOG(2) << "Failed to create P-384 signed P-256 attestation certificate";
+      return std::nullopt;
+    }
+  } else if (!net::x509_util::CreateSelfSignedCert(
+                 attestation_private_key->key(), net::x509_util::DIGEST_SHA256,
+                 subject_name, kAttestationCertSerialNumber,
+                 base::Time::FromTimeT(1500000000), expiry_date, extensions,
+                 &attestation_cert)) {
     DVLOG(2) << "Failed to create attestation certificate";
     return std::nullopt;
   }

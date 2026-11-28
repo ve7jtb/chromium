@@ -172,6 +172,83 @@ std::vector<uint8_t> ConstructSignatureBuffer(
   return signature_buffer;
 }
 
+int64_t GetMtcSerialForAlgorithm(CoseAlgorithmIdentifier alg) {
+  switch (alg) {
+    case CoseAlgorithmIdentifier::kMlDsa44:
+      return 1;
+    case CoseAlgorithmIdentifier::kMlDsa65:
+      return 2;
+    case CoseAlgorithmIdentifier::kMlDsa87:
+      return 3;
+    case CoseAlgorithmIdentifier::kEs256:
+      return 4;
+    default:
+      return 1;
+  }
+}
+
+void AppendUint16BE(std::vector<uint8_t>& buf, uint16_t val) {
+  buf.push_back(static_cast<uint8_t>((val >> 8) & 0xFF));
+  buf.push_back(static_cast<uint8_t>(val & 0xFF));
+}
+
+void AppendUint48BE(std::vector<uint8_t>& buf, uint64_t val) {
+  for (int shift = 40; shift >= 0; shift -= 8) {
+    buf.push_back(static_cast<uint8_t>((val >> shift) & 0xFF));
+  }
+}
+
+void AppendUint64BE(std::vector<uint8_t>& buf, uint64_t val) {
+  for (int shift = 56; shift >= 0; shift -= 8) {
+    buf.push_back(static_cast<uint8_t>((val >> shift) & 0xFF));
+  }
+}
+
+std::array<uint8_t, 32> ComputeFidoMtcLeafHash(
+    base::span<const uint8_t> ca_id,
+    uint64_t serial,
+    uint64_t not_before,
+    uint64_t not_after,
+    base::span<const uint8_t, 16> aaguid,
+    std::optional<uint64_t> fw_version,
+    base::span<const uint8_t> cose_pub_key,
+    base::span<const uint8_t> extensions) {
+  std::array<uint8_t, 32> pub_key_hash = crypto::hash::Sha256(cose_pub_key);
+  std::vector<uint8_t> leaf_input;
+  leaf_input.push_back(0x00);  // RFC 9162 §2.1.1 leaf domain separator
+  AppendUint16BE(leaf_input, static_cast<uint16_t>(ca_id.size()));
+  base::Extend(leaf_input, ca_id);
+  AppendUint64BE(leaf_input, serial);
+  AppendUint64BE(leaf_input, not_before);
+  AppendUint64BE(leaf_input, not_after);
+  base::Extend(leaf_input, aaguid);
+  if (fw_version.has_value()) {
+    leaf_input.push_back(0x01);
+    AppendUint64BE(leaf_input, *fw_version);
+  } else {
+    leaf_input.push_back(0x00);
+  }
+  base::Extend(leaf_input, pub_key_hash);
+  AppendUint16BE(leaf_input, static_cast<uint16_t>(extensions.size()));
+  base::Extend(leaf_input, extensions);
+  return crypto::hash::Sha256(leaf_input);
+}
+
+std::vector<uint8_t> BuildSingleLeafMtcProof(
+    uint64_t serial,
+    base::span<const uint8_t> extensions) {
+  std::vector<uint8_t> proof;
+  AppendUint16BE(proof, static_cast<uint16_t>(extensions.size()));
+  base::Extend(proof, extensions);
+  AppendUint48BE(proof, serial);
+  AppendUint48BE(proof, serial + 1);
+  AppendUint16BE(proof, 0);  // proof_bytes_len = 0 (single-leaf subtree)
+  proof.push_back(0x00);     // sig_len = 0 (uint24)
+  proof.push_back(0x00);
+  proof.push_back(0x00);
+  return proof;
+}
+
 std::vector<uint8_t> ConstructMakeCredentialResponse(
     std::optional<std::vector<uint8_t>> attestation_certificate,
     base::span<const uint8_t> signature,
@@ -180,21 +257,45 @@ std::vector<uint8_t> ConstructMakeCredentialResponse(
     std::optional<LargeBlobSupportType> large_blob_type,
     bool prf_enabled,
     std::optional<std::vector<uint8_t>> prf_results,
-    std::optional<CmtgKeyResponse> cmtg_key) {
+    std::optional<CmtgKeyResponse> cmtg_key,
+    CoseAlgorithmIdentifier attestation_algorithm =
+        CoseAlgorithmIdentifier::kEs256,
+    std::optional<MtcDebugResponse> mtc_debug = std::nullopt,
+    const std::string& attestation_format = "packed") {
   std::unique_ptr<OpaqueAttestationStatement> attestation_statement;
   if (!signature.empty()) {
     cbor::Value::MapValue attestation_map;
-    attestation_map.emplace("alg", -7);
+    attestation_map.emplace("alg", static_cast<int64_t>(attestation_algorithm));
     attestation_map.emplace("sig", base::ToVector(signature));
 
-    if (attestation_certificate) {
-      cbor::Value::ArrayValue certificate_chain;
-      certificate_chain.emplace_back(std::move(*attestation_certificate));
-      attestation_map.emplace("x5c", std::move(certificate_chain));
-    }
+    if (attestation_format == "mtc") {
+      int64_t serial = GetMtcSerialForAlgorithm(attestation_algorithm);
+      cbor::Value::MapValue mtc_cert_map;
+      mtc_cert_map.emplace("caId", base::ToVector(kDeviceAaguid));
+      mtc_cert_map.emplace("serial", serial);
+      mtc_cert_map.emplace("notBefore", 0);
+      mtc_cert_map.emplace("notAfter", static_cast<int64_t>(253402300799ULL));
+      mtc_cert_map.emplace("firmwareVersion", 1);
+      if (mtc_debug && mtc_debug->mtc_proof) {
+        mtc_cert_map.emplace("mtcProof", *mtc_debug->mtc_proof);
+      }
+      attestation_map.emplace("mtcCert", std::move(mtc_cert_map));
 
-    attestation_statement = std::make_unique<OpaqueAttestationStatement>(
-        "packed", cbor::Value(std::move(attestation_map)));
+      attestation_statement = std::make_unique<OpaqueAttestationStatement>(
+          "mtc", cbor::Value(std::move(attestation_map)));
+    } else if (attestation_format == "none") {
+      attestation_statement = std::make_unique<OpaqueAttestationStatement>(
+          "none", cbor::Value(cbor::Value::MapValue()));
+    } else {
+      if (attestation_certificate) {
+        cbor::Value::ArrayValue certificate_chain;
+        certificate_chain.emplace_back(std::move(*attestation_certificate));
+        attestation_map.emplace("x5c", std::move(certificate_chain));
+      }
+
+      attestation_statement = std::make_unique<OpaqueAttestationStatement>(
+          "packed", cbor::Value(std::move(attestation_map)));
+    }
   } else {
     attestation_statement = std::make_unique<OpaqueAttestationStatement>(
         "none", cbor::Value(cbor::Value::MapValue()));
@@ -210,6 +311,7 @@ std::vector<uint8_t> ConstructMakeCredentialResponse(
   make_credential_response.prf_enabled = prf_enabled;
   make_credential_response.prf_results = std::move(prf_results);
   make_credential_response.cmtg_key = std::move(cmtg_key);
+  make_credential_response.mtc_debug = std::move(mtc_debug);
   return AsCTAPStyleCBORBytes(make_credential_response);
 }
 
@@ -554,10 +656,15 @@ VirtualCtap2Device::VirtualCtap2Device() {
 VirtualCtap2Device::VirtualCtap2Device(scoped_refptr<State> state,
                                        const Config& config)
     : VirtualFidoDevice(std::move(state)), config_(config) {
+  if (mutable_state()->factory_reset) {
+    config_.always_uv = false;
+    config_.support_enterprise_attestation = false;
+    config_.always_return_enterprise_attestation = false;
+  }
   RegenerateKeyAgreementKey();
 
   std::vector<ProtocolVersion> versions = {ProtocolVersion::kCtap2};
-  if (config.u2f_support) {
+  if (config_.u2f_support) {
     versions.emplace_back(ProtocolVersion::kU2f);
     u2f_device_ = std::make_unique<VirtualU2fDevice>(NewReferenceToState());
   }
@@ -565,7 +672,7 @@ VirtualCtap2Device::VirtualCtap2Device(scoped_refptr<State> state,
 
   AuthenticatorSupportedOptions options;
   bool options_updated = false;
-  if (config.pin_support) {
+  if (config_.pin_support) {
     options_updated = true;
 
     if (mutable_state()->pin.empty()) {
@@ -577,7 +684,7 @@ VirtualCtap2Device::VirtualCtap2Device(scoped_refptr<State> state,
     }
   }
 
-  if (config.internal_uv_support) {
+  if (config_.internal_uv_support) {
     options_updated = true;
     if (mutable_state()->fingerprints_enrolled) {
       options.user_verification_availability = AuthenticatorSupportedOptions::
@@ -588,22 +695,22 @@ VirtualCtap2Device::VirtualCtap2Device(scoped_refptr<State> state,
     }
   }
 
-  options.supports_pin_uv_auth_token = config.pin_uv_auth_token_support;
+  options.supports_pin_uv_auth_token = config_.pin_uv_auth_token_support;
   DCHECK(!options.supports_pin_uv_auth_token ||
          SupportsAtLeast(Ctap2Version::kCtap2_1));
 
-  if (config.resident_key_support) {
+  if (config_.resident_key_support) {
     options_updated = true;
     options.supports_resident_key = true;
   }
 
-  if (config.credential_management_support) {
+  if (config_.credential_management_support) {
     options_updated = true;
     options.supports_credential_management = true;
     options.supports_credential_management_preview = true;
   }
 
-  if (config.bio_enrollment_support) {
+  if (config_.bio_enrollment_support) {
     options_updated = true;
     if (mutable_state()->bio_enrollment_provisioned) {
       options.bio_enrollment_availability = AuthenticatorSupportedOptions::
@@ -614,7 +721,7 @@ VirtualCtap2Device::VirtualCtap2Device(scoped_refptr<State> state,
     }
   }
 
-  if (config.bio_enrollment_preview_support) {
+  if (config_.bio_enrollment_preview_support) {
     options_updated = true;
     if (mutable_state()->bio_enrollment_provisioned) {
       options.bio_enrollment_availability_preview =
@@ -627,43 +734,43 @@ VirtualCtap2Device::VirtualCtap2Device(scoped_refptr<State> state,
     }
   }
 
-  if (config.is_platform_authenticator) {
+  if (config_.is_platform_authenticator) {
     options_updated = true;
     options.is_platform_device =
         AuthenticatorSupportedOptions::PlatformDevice::kYes;
   }
 
-  if (config.cred_protect_support) {
+  if (config_.cred_protect_support) {
     options_updated = true;
-    options.default_cred_protect = config.default_cred_protect;
+    options.default_cred_protect = config_.default_cred_protect;
   }
 
-  if (config.support_enterprise_attestation) {
+  if (config_.support_enterprise_attestation) {
     options_updated = true;
     options.enterprise_attestation = true;
   }
 
-  if (config.large_blob_support) {
-    DCHECK(config.resident_key_support);
+  if (config_.large_blob_support) {
+    DCHECK(config_.resident_key_support);
     DCHECK(SupportsAtLeast(Ctap2Version::kCtap2_1));
-    DCHECK(!config.large_blob_extension_support);
-    DCHECK((!config.pin_support && !config.internal_uv_support) ||
-           config.pin_uv_auth_token_support)
+    DCHECK(!config_.large_blob_extension_support);
+    DCHECK((!config_.pin_support && !config_.internal_uv_support) ||
+           config_.pin_uv_auth_token_support)
         << "PinUvAuthToken support is required to write large blobs for "
            "uv-enabled authenticators";
     options_updated = true;
     options.large_blob_type = LargeBlobSupportType::kKey;
     device_info_->max_serialized_large_blob_array =
-        config.available_large_blob_storage;
+        config_.available_large_blob_storage;
   }
 
-  if (config.always_uv) {
-    DCHECK(config.pin_support || config.internal_uv_support);
+  if (config_.always_uv) {
+    DCHECK(config_.pin_support || config_.internal_uv_support);
     options_updated = true;
     options.always_uv = true;
   }
 
-  if (config.allow_non_resident_credential_creation_without_uv) {
+  if (config_.allow_non_resident_credential_creation_without_uv) {
     options.make_cred_uv_not_required = true;
     options_updated = true;
   }
@@ -674,88 +781,98 @@ VirtualCtap2Device::VirtualCtap2Device(scoped_refptr<State> state,
 
   std::vector<std::string> extensions;
 
-  if (config.cred_protect_support) {
+  if (config_.cred_protect_support) {
     extensions.emplace_back(device::kExtensionCredProtect);
   }
 
-  if (config.hmac_secret_support) {
+  if (config_.hmac_secret_support) {
     extensions.emplace_back(device::kExtensionHmacSecret);
   }
 
-  if (config.hmac_secret_mc_support) {
-    CHECK(config.hmac_secret_support);
+  if (config_.hmac_secret_mc_support) {
+    CHECK(config_.hmac_secret_support);
     extensions.emplace_back(device::kExtensionHmacSecretMc);
   }
 
-  if (config.prf_support) {
-    DCHECK(!config.hmac_secret_support);
-    DCHECK(config.internal_account_chooser);
+  if (config_.prf_support) {
+    DCHECK(!config_.hmac_secret_support);
+    DCHECK(config_.internal_account_chooser);
     extensions.emplace_back(device::kExtensionPRF);
   }
 
-  if (config.cred_blob_support) {
+  if (config_.cred_blob_support) {
     extensions.emplace_back(device::kExtensionCredBlob);
     device_info_->options.max_cred_blob_length = kMaxCredBlob;
   }
 
-  if (config.large_blob_support) {
-    DCHECK(!config.large_blob_extension_support);
+  if (config_.large_blob_support) {
+    DCHECK(!config_.large_blob_extension_support);
     extensions.emplace_back(device::kExtensionLargeBlobKey);
   }
 
-  if (config.large_blob_extension_support) {
-    DCHECK(!config.large_blob_support);
+  if (config_.large_blob_extension_support) {
+    DCHECK(!config_.large_blob_support);
     extensions.emplace_back(device::kExtensionLargeBlob);
   }
 
-  if (config.min_pin_length_extension_support) {
+  if (config_.min_pin_length_extension_support) {
     extensions.emplace_back(device::kExtensionMinPINLength);
   }
 
-  if (config.cmtg_key_support) {
+  if (config_.cmtg_key_support) {
     extensions.emplace_back(device::kExtensionCmtgKey);
+  }
+
+  if (config_.mtc_debug_support) {
+    extensions.emplace_back(device::kExtensionMtcDebug);
   }
 
   if (!extensions.empty()) {
     device_info_->extensions.emplace(std::move(extensions));
   }
 
-  if (config.max_credential_count_in_list > 0) {
+  if (!config_.none_attestation) {
+    device_info_->attestation_formats =
+        std::vector<std::string>{"mtc", "packed"};
+    device_info_->options.supports_attestation_formats = true;
+  }
+
+  if (config_.max_credential_count_in_list > 0) {
     device_info_->max_credential_count_in_list =
-        config.max_credential_count_in_list;
+        config_.max_credential_count_in_list;
   }
 
-  if (config.max_credential_id_length > 0) {
-    device_info_->max_credential_id_length = config.max_credential_id_length;
+  if (config_.max_credential_id_length > 0) {
+    device_info_->max_credential_id_length = config_.max_credential_id_length;
   }
 
-  if (!config.advertised_algorithms.empty()) {
+  if (!config_.advertised_algorithms.empty()) {
     device_info_->algorithms.emplace();
     std::ranges::transform(
-        config.advertised_algorithms,
+        config_.advertised_algorithms,
         std::back_inserter(device_info_->algorithms.value()),
         [](auto algo) { return static_cast<int32_t>(algo); });
   }
 
-  if (config.pin_support || config.pin_uv_auth_token_support) {
+  if (config_.pin_support || config_.pin_uv_auth_token_support) {
     device_info_->pin_protocols =
-        base::flat_set<PINUVAuthProtocol>{config.pin_protocol};
+        base::flat_set<PINUVAuthProtocol>{config_.pin_protocol};
   }
 
-  if (config.resident_key_support && SupportsAtLeast(Ctap2Version::kCtap2_1)) {
+  if (config_.resident_key_support && SupportsAtLeast(Ctap2Version::kCtap2_1)) {
     device_info_->remaining_discoverable_credentials =
         remaining_resident_credentials();
   }
 
-  if (config.min_pin_length_support) {
-    DCHECK(config.pin_support);
-    DCHECK(config.pin_uv_auth_token_support);
+  if (config_.min_pin_length_support) {
+    DCHECK(config_.pin_support);
+    DCHECK(config_.pin_uv_auth_token_support);
     device_info_->min_pin_length = mutable_state()->min_pin_length;
     device_info_->force_pin_change = mutable_state()->force_pin_change;
   }
 
-  if (!config.transports_in_get_info.empty()) {
-    device_info_->transports = config.transports_in_get_info;
+  if (!config_.transports_in_get_info.empty()) {
+    device_info_->transports = config_.transports_in_get_info;
   }
 }
 
@@ -861,6 +978,14 @@ FidoDevice::CancelToken VirtualCtap2Device::DeviceTransact(
       response_code = *opt_response_code;
       break;
     }
+    case CtapRequestCommand::kAuthenticatorReset: {
+      auto result = OnReset(request_bytes);
+      if (!result) {
+        return 0;  // User presence is pending (or the device was destroyed).
+      }
+      response_code = *result;
+      break;
+    }
     case CtapRequestCommand::kAuthenticatorGetNextAssertion:
       response_code = OnGetNextAssertion(request_bytes, &response_data);
       break;
@@ -912,6 +1037,86 @@ FidoDevice::CancelToken VirtualCtap2Device::DeviceTransact(
 
 base::WeakPtr<FidoDevice> VirtualCtap2Device::GetWeakPtr() {
   return weak_factory_.GetWeakPtr();
+}
+
+std::optional<CtapDeviceResponseCode> VirtualCtap2Device::OnReset(
+    base::span<const uint8_t> request) {
+  if (!request.empty()) {
+    return CtapDeviceResponseCode::kCtap1ErrInvalidLength;
+  }
+  if (base::TimeTicks::Now() - mutable_state()->last_power_cycle >
+      base::Seconds(10)) {
+    return CtapDeviceResponseCode::kCtap2ErrNotAllowed;
+  }
+  auto weak_this = GetWeakPtr();
+  if (!SimulatePress()) {
+    return std::nullopt;
+  }
+  auto state = NewReferenceToState();
+  // Keep the shared State, observers, transport, and test controls alive.
+  // Moving the credentials also keeps IDs valid during observer notifications.
+  State::RegistrationsMap removed;
+  removed.swap(state->registrations);
+  request_state_.Reset();
+  state->pin.clear();
+  state->pin_retries = kMaxPinRetries;
+  state->pin_retries_since_insertion = 0;
+  state->soft_locked = false;
+  RAND_bytes(state->pin_token, sizeof(state->pin_token));
+  state->pin_uv_token_permissions = 0;
+  state->pin_uv_token_rpid.reset();
+  state->force_pin_change = false;
+  state->min_pin_length = kMinPinLength;
+  state->uv_retries = kMaxUvRetries;
+  state->fingerprints_enrolled = false;
+  state->bio_enrollment_provisioned = false;
+  state->bio_current_template_id.reset();
+  state->bio_remaining_samples = config_.bio_enrollment_samples_required;
+  state->bio_templates.clear();
+  state->bio_enrollment_next_sample_error = false;
+  state->bio_enrollment_next_sample_timeout = false;
+  state->large_blob = base::MakeRefCounted<State>()->large_blob;
+  state->factory_reset = true;
+  config_.always_uv = false;
+  config_.support_enterprise_attestation = false;
+  config_.always_return_enterprise_attestation = false;
+  RegenerateKeyAgreementKey();
+
+  auto& options = device_info_->options;
+  options.always_uv = false;
+  options.enterprise_attestation = false;
+  if (config_.pin_support) {
+    options.client_pin_availability = AuthenticatorSupportedOptions::
+        ClientPinAvailability::kSupportedButPinNotSet;
+  }
+  if (config_.internal_uv_support) {
+    options.user_verification_availability = AuthenticatorSupportedOptions::
+        UserVerificationAvailability::kSupportedButNotConfigured;
+  }
+  if (config_.bio_enrollment_support) {
+    options.bio_enrollment_availability = AuthenticatorSupportedOptions::
+        BioEnrollmentAvailability::kSupportedButUnprovisioned;
+  }
+  if (config_.bio_enrollment_preview_support) {
+    options.bio_enrollment_availability_preview =
+        AuthenticatorSupportedOptions::BioEnrollmentAvailability::
+            kSupportedButUnprovisioned;
+  }
+  if (device_info_->min_pin_length) {
+    device_info_->min_pin_length = kMinPinLength;
+    device_info_->force_pin_change = false;
+  }
+  if (device_info_->remaining_discoverable_credentials) {
+    device_info_->remaining_discoverable_credentials =
+        remaining_resident_credentials();
+  }
+  for (const auto& [id, registration] : removed) {
+    state->NotifyCredentialDeleted(id);
+    if (!weak_this) {
+      return std::nullopt;
+    }
+  }
+  return CtapDeviceResponseCode::kSuccess;
 }
 
 void VirtualCtap2Device::Init(std::vector<ProtocolVersion> versions) {
@@ -1395,19 +1600,42 @@ std::optional<CtapDeviceResponseCode> VirtualCtap2Device::OnMakeCredential(
   std::vector<uint8_t> sign_buffer =
       ConstructSignatureBuffer(authenticator_data, request.client_data_hash);
 
+  CoseAlgorithmIdentifier attestation_alg =
+      config_.batch_attestation_algorithm.value_or(
+          (private_key->algorithm() == CoseAlgorithmIdentifier::kMlDsa44 ||
+           private_key->algorithm() == CoseAlgorithmIdentifier::kMlDsa65 ||
+           private_key->algorithm() == CoseAlgorithmIdentifier::kMlDsa87)
+              ? private_key->algorithm()
+              : CoseAlgorithmIdentifier::kEs256);
+
   // Sign with attestation key.
   // Note: Non-deterministic, you need to mock this out if you rely on
   // deterministic behavior.
   std::vector<uint8_t> sig;
   if (!config_.none_attestation) {
-    auto key =
-        crypto::keypair::PrivateKey::FromPrivateKeyInfo(GetAttestationKey());
-    CHECK(key && key->IsEc());
+    auto key = crypto::keypair::PrivateKey::FromPrivateKeyInfo(
+        GetAttestationKey(attestation_alg));
+    CHECK(key);
     if (mutable_state()->ctap2_invalid_signature) {
       sig = {0x00};
     } else {
-      sig = crypto::sign::Sign(crypto::sign::SignatureKind::ECDSA_SHA256, *key,
-                               sign_buffer);
+      crypto::sign::SignatureKind sig_kind;
+      switch (attestation_alg) {
+        case CoseAlgorithmIdentifier::kMlDsa44:
+          sig_kind = crypto::sign::SignatureKind::MLDSA_44;
+          break;
+        case CoseAlgorithmIdentifier::kMlDsa65:
+          sig_kind = crypto::sign::SignatureKind::MLDSA_65;
+          break;
+        case CoseAlgorithmIdentifier::kMlDsa87:
+          sig_kind = crypto::sign::SignatureKind::MLDSA_87;
+          break;
+        case CoseAlgorithmIdentifier::kEs256:
+        default:
+          sig_kind = crypto::sign::SignatureKind::ECDSA_SHA256;
+          break;
+      }
+      sig = crypto::sign::Sign(sig_kind, *key, sign_buffer);
     }
   }
 
@@ -1435,7 +1663,8 @@ std::optional<CtapDeviceResponseCode> VirtualCtap2Device::OnMakeCredential(
     }
     attestation_cert = GenerateAttestationCertificate(
         enterprise_attestation_requested,
-        config_.include_transports_in_attestation_certificate);
+        config_.include_transports_in_attestation_certificate,
+        attestation_alg);
     if (!attestation_cert) {
       DLOG(ERROR) << "Failed to generate attestation certificate.";
       return CtapDeviceResponseCode::kCtap2ErrOther;
@@ -1508,10 +1737,62 @@ std::optional<CtapDeviceResponseCode> VirtualCtap2Device::OnMakeCredential(
 
   StoreNewKey(key_handle, std::move(registration));
 
+  auto attestation_private_key =
+      crypto::keypair::PrivateKey::FromPrivateKeyInfo(
+          GetAttestationKey(attestation_alg));
+  CHECK(attestation_private_key);
+  auto attestation_pub_key =
+      crypto::keypair::PublicKey::FromPrivateKey(*attestation_private_key);
+  std::vector<uint8_t> attestation_cose_key =
+      crypto::PublicKeyToCoseKey(attestation_pub_key);
+
+  std::optional<MtcDebugResponse> mtc_debug_response;
+  if (request.mtc_debug && config_.mtc_debug_support) {
+    mtc_debug_response.emplace(attestation_cose_key);
+    mtc_debug_response->not_before = 0;
+    mtc_debug_response->not_after = 253402300799ULL;  // RFC 5280 non-expiring
+    mtc_debug_response->firmware_version = 1;
+
+    std::vector<uint8_t> proof_extensions;
+    // deviceSerial is only included if Enterprise Attestation was requested
+    // (EP 1 or 2), respecting the privacy gate.
+    if (enterprise_attestation_requested) {
+      mtc_debug_response->device_serial = "VIRTUAL_CTAP2_PQC_001";
+      proof_extensions.assign(mtc_debug_response->device_serial->begin(),
+                              mtc_debug_response->device_serial->end());
+    }
+
+    uint64_t mtc_serial =
+        static_cast<uint64_t>(GetMtcSerialForAlgorithm(attestation_alg));
+    std::array<uint8_t, 32> leaf_root_hash = ComputeFidoMtcLeafHash(
+        kDeviceAaguid, mtc_serial, *mtc_debug_response->not_before,
+        *mtc_debug_response->not_after, kDeviceAaguid,
+        mtc_debug_response->firmware_version, attestation_cose_key,
+        proof_extensions);
+    mtc_debug_response->root_hash = base::ToVector(leaf_root_hash);
+    mtc_debug_response->mtc_proof =
+        BuildSingleLeafMtcProof(mtc_serial, proof_extensions);
+  }
+
+  std::string effective_attestation_format = config_.attestation_format;
+  if (!config_.none_attestation && !request.attestation_formats.empty()) {
+    for (const auto& fmt : request.attestation_formats) {
+      if (fmt == "mtc" || fmt == "packed") {
+        effective_attestation_format = fmt;
+        break;
+      }
+      if (fmt == "none" && !enterprise_attestation_requested) {
+        effective_attestation_format = "none";
+        break;
+      }
+    }
+  }
+
   *response = ConstructMakeCredentialResponse(
       std::move(attestation_cert), sig, std::move(authenticator_data),
       enterprise_attestation_requested, supports_large_blob, prf_enabled,
-      std::move(prf_results), std::move(cmtg_key_response));
+      std::move(prf_results), std::move(cmtg_key_response), attestation_alg,
+      std::move(mtc_debug_response), effective_attestation_format);
   return CtapDeviceResponseCode::kSuccess;
 }
 

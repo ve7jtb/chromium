@@ -1,0 +1,14 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+// https://w3c.github.io/webauthn/#dictdef-mtcdebugextensionoutputjson
+dictionary MtcDebugExtensionOutputJSON {
+  required Base64URLString pubKey;
+  DOMString deviceSerial;
+  unsigned long long notBefore;
+  unsigned long long notAfter;
+  unsigned long firmwareVersion;
+  Base64URLString mtcProof;
+  Base64URLString rootHash;
+};

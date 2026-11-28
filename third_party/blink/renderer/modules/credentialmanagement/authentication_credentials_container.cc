@@ -46,6 +46,7 @@
 #include "third_party/blink/renderer/bindings/modules/v8/v8_identity_credential_request_options.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_identity_provider_config.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_identity_provider_request_options.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_mtc_debug_extension_output.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_otp_credential_request_options.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_public_key_credential_creation_options.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_public_key_credential_descriptor.h"
@@ -706,6 +707,11 @@ void OnMakePublicKeyCredentialComplete(
     extension_outputs->setCmtgKey(
         ConvertTo<blink::AuthenticationExtensionsCmtgKeyOutputs*>(
             std::move(credential->cmtg_key)));
+  }
+  if (credential->mtc_debug) {
+    extension_outputs->setMtcDebug(
+        ConvertTo<blink::MtcDebugExtensionOutput*>(
+            std::move(credential->mtc_debug)));
   }
   if (credential->echo_prf) {
     auto* prf_outputs = AuthenticationExtensionsPRFOutputs::Create();

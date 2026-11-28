@@ -60,6 +60,7 @@ struct COMPONENT_EXPORT(DEVICE_FIDO) AuthenticatorGetInfoResponse {
   std::optional<bool> force_pin_change;
   std::optional<uint32_t> min_pin_length;
   std::optional<FidoTransportProtocolSet> transports;
+  std::optional<std::vector<std::string>> attestation_formats;
   AuthenticatorSupportedOptions options;
 };
 

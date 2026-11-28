@@ -123,6 +123,20 @@ struct CmtgKeyResponse {
   array<uint8> signature;
 };
 
+// The output for the MTC Debug extension (mtcDebug).
+struct MtcDebugResponse {
+  array<uint8> pub_key;
+  string? device_serial;
+  uint64 not_before;
+  bool has_not_before;
+  uint64 not_after;
+  bool has_not_after;
+  uint32 firmware_version;
+  bool has_firmware_version;
+  array<uint8>? mtc_proof;
+  array<uint8>? root_hash;
+};
+
 // The `payment` extension response.
 struct AuthenticationExtensionsPaymentResponse {
   // The signature of the browser bound key corresponding to the public key in
@@ -191,6 +205,9 @@ struct MakeCredentialAuthenticatorResponse {
 
   // The response for the Credential Manager Trust Group key extension.
   CmtgKeyResponse? cmtg_key;
+
+  // The response for the MTC Debug extension.
+  MtcDebugResponse? mtc_debug;
 
   // True if getClientExtensionResults() called on the returned
   // PublicKeyCredential instance should contain a `remoteClientDataJSON`
@@ -644,6 +661,10 @@ struct PublicKeyCredentialCreationOptions {
   // Group key extension.
   // https://github.com/w3c/webauthn/pull/2377
   bool cmtg_key = false;
+
+  // `mtc_debug` is true if the request contained an MTC Debug extension.
+  // https://w3c.github.io/webauthn/#sctn-mtc-debug-extension
+  bool mtc_debug = false;
 };
 
 // See https://w3c.github.io/webauthn/#enumdef-attestationconveyancepreference
